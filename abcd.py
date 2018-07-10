@@ -35,6 +35,7 @@ class Beampath:
         self.position = np.array([position])
         self.list_elements = [Object()]
         self.M = np.identity(2)
+        self._check_paraxial()
     
     def add_thinlens(self, focal_length):
         """
@@ -47,6 +48,7 @@ class Beampath:
         self.index = np.append(self.index, self.index[-1])
         self.position = np.append(self.position, self.position[-1])
         self.M = np.dot(self.list_elements[-1].M, self.M)
+        self._check_paraxial()
     
     def add_freespace(self, distance):
         """
@@ -59,6 +61,7 @@ class Beampath:
         self.index = np.append(self.index, self.index[-1])
         self.position = np.append(self.position, self.position[-1]+distance)
         self.M = np.dot(self.list_elements[-1].M, self.M)
+        self._check_paraxial()
     
     def add_interface(self, index, curvature = np.inf):
         """
@@ -71,6 +74,7 @@ class Beampath:
         self.index = np.append(self.index, index)
         self.position = np.append(self.position, self.position[-1])
         self.M = np.dot(self.list_elements[-1].M, self.M)
+        self._check_paraxial()
     
     def add_thicklens(self, index, thickness, radius_in=np.inf, radius_out=np.inf):
         """
@@ -98,6 +102,7 @@ class Beampath:
         self.angle = np.append(self.angle, self.angle[-1])
         self.index = np.append(self.index, self.index[-1])
         self.position = np.append(self.position, self.position[-1])
+        self._check_paraxial()
     
     def _add_exit(self):
         """
@@ -108,7 +113,15 @@ class Beampath:
         self.angle = np.append(self.angle, self.angle[-1])
         self.index = np.append(self.index, self.index[-1])
         self.position = np.append(self.position, self.position[-1])
-        
+    
+    def _check_paraxial(self):
+        """
+        Check if theta-sin(theta) is small enough
+        """
+        par_error = np.max(np.abs(self.angle - np.sin(self.angle)))
+        if par_error > 0.01:
+            warn_message = 'Paraxial approximation is not valid: |x - sin(x)| = %.3g'%par_error
+            warnings.warn(warn_message)
 
 
     def plot(self, **kwargs):
