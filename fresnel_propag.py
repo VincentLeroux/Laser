@@ -4,6 +4,8 @@ def prop_two_steps(u1, L1, L2, l, z):
     """
     Fresnel propagator
     Please use SI units
+    To propagate after the focal plane, first propagate to the focal plane and then out of it
+    Also, the near fields should keep the same aspect ratio to the box size ideally...
 
     Inputs:
     ---------

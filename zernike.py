@@ -81,14 +81,3 @@ def zernike_list_to_map(zernike_list, rho, theta):
 def cart2pol(x,y):
     """Convert cartesian to polar coordinates"""
     return np.abs(x+1j*y), np.angle(x+1j*y)
-
-def pol2cart(r,theta):
-    """Convert polar to cartesian coodinates"""
-    return np.real(r*exp(1j*theta)), np.imag(r*exp(1j*theta))
-
-def wf_trim(wf):
-    """Trim zeros of 2D map"""
-    wft = wf.copy()
-    wft = wft[:, wft.any(axis=0)] # trim columns
-    wft = wft[wft.any(axis=1), :] # trim rows
-    return wft
