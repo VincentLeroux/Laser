@@ -16,3 +16,4 @@ Python modules for laser simulation
   - Some general useful functions
 - zernike
   - Module to generate and analyse laser wavefront based on the Zernike polynomials
+  - Need to add an example notebook
