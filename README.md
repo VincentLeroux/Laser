@@ -12,6 +12,7 @@ Python modules for laser simulation
   - Need to add an example notebook
 - fresnel_propag
   - Transverse 2D complex electric field propagator
+  - Possibility to couple it to abcd.Beampath
 - misc
   - Some general useful functions
 - zernike
