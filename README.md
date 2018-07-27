@@ -18,3 +18,8 @@ Python modules for laser simulation
 - zernike
   - Module to generate and analyse laser wavefront based on the Zernike polynomials
   - Need to add an example notebook
+
+## Installation
+
+Download or clone this repository and navigate into the directroy Laser. There run 
+`python setup.py install`.

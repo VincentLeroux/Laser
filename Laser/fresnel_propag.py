@@ -104,7 +104,7 @@ def abcd_propag(beampath, profile={'wavelength':800e-9, 'sg_order':6}, num_point
         Transverse size of the simulation box along the beampath
         
     """
-    from abcd import Beampath, Freespace, Thinlens, Interface
+    from .abcd import Beampath, Freespace, Thinlens, Interface
     import warnings
     
     # Check inputs
