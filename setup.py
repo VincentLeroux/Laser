@@ -7,7 +7,6 @@ setup(
     description='Laser simulation tools',
     maintainer='Vincent Leroux',
     packages=find_packages('.'),
-    tests_require=['pytest', 'openpmd_viewer'],
     include_package_data=True,
     platforms='any'
     )
