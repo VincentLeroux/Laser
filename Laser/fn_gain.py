@@ -1,4 +1,3 @@
-import glob
 import numpy as np
 import scipy.constants as cst
 from scipy.interpolate import interp1d
@@ -84,7 +83,7 @@ def gain_cross_section_tisa(lambda_):
     Returns the gain cross section of titanium-sapphire in m^2
     in function of the wavelength in m
     """
-    filename = glob.glob('./**/gain_cross_section.txt', recursive=True)
+    filename = os.path.join( os.path.dirname(__file__), 'data/gain_cross_section.txt' )
     data = np.genfromtxt(filename[0],skip_header=1, delimiter='; ')
     l = data[:,0] # in nm
     s = data[:,1] # in cm^2
@@ -96,7 +95,7 @@ def abs_cross_section_tisa(lambda_):
     Returns the absorption cross section of titanium-sapphire in m^2
     in function of the wavelength in m
     """
-    filename = glob.glob('./**/absorption_cross_section.txt', recursive=True)
+    filename = os.path.join( os.path.dirname(__file__), 'data/absorption_cross_section.txt' )
     data = np.genfromtxt(filename[0],skip_header=1, delimiter='; ')
     l = data[:,0] # in nm
     s = data[:,1] # in cm^2
