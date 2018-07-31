@@ -23,7 +23,7 @@ class Beampath:
     __ymax = 1
     __prec = '%.2f'
     
-    def __init__(self, radius=0, angle=1, index=1, position=0):
+    def __init__(self, radius=0, angle=0.1, index=1, position=0):
         """
         Initialise beam path with an object
         
@@ -50,6 +50,29 @@ class Beampath:
         self.list_elements = [Object()]
         self.M = np.identity(2)
         self._check_paraxial()
+    
+    def edit_object(self, radius=None, angle=None, position=None):
+        """
+        Change object and recalculate beam path
+        
+        Parameters
+        ----------
+        radius: float
+            Object radius
+        
+        angle: float
+            Object angle in radians
+        
+        position: float
+            Object position
+        """
+        if radius is not None:
+            self.radius[0] = radius
+        if angle is not None:
+            self.angle[0] = angle
+        if position is not None:
+            self.position[0] = position
+        self._recalculate()
     
     def add_thinlens(self, focal_length):
         """
@@ -159,6 +182,103 @@ class Beampath:
         self.position = np.append(self.position, self.position[-1])
         self._check_paraxial()
     
+    def remove_element(self, element_index):
+        """
+        Remove the surface placed in position element_index
+        
+        Parameter
+        ---------
+        element_index: int or list or int
+            Index of the element to remove.
+            Should be between 1 and the last element
+        """
+        # If input is integer, put it in a list
+        try:
+            element_index[0]
+        except:
+            element_index = [element_index]
+            
+        # Check range of input
+        if min(element_index) < 1:
+            raise ValueError("Impossible to remove the object...")
+        elif max(element_index) > len(self.list_elements):
+            raise ValueError("Index too high...")
+                
+        # Check if last element is an image
+        add_image = False
+        if isinstance(self.list_elements[-1], Image):
+            if isinstance(self.list_elements[-3], Exit):
+                element_index.append(len(self.list_elements)-3)
+            element_index.append(len(self.list_elements)-2)
+            element_index.append(len(self.list_elements)-1)
+            add_image = True
+        # Get the new list and recalculate
+        new_list = [elem for i, elem in enumerate(self.list_elements) if i not in element_index]
+        self.list_elements = new_list
+        self._recalculate()
+        if add_image:
+            self.add_image()
+    
+    def pop(self):
+        """
+        Remove the last element (apart from the image) and returns it
+        """
+        if isinstance(self.list_elements[-1], Image):
+            if isinstance(self.list_elements[-3], Exit):
+                last_element = self.list_elements[-4]
+                idx = -4
+            else:
+                last_element = self.list_elements[-3]
+                idx = -3
+        else:
+            last_element = self.list_elements[-1]
+            idx = -1
+        
+        self.remove_element(len(self.list_elements)+idx)
+        return last_element
+    
+    def extend(self, beampath):
+        """
+        Append a beampath to the current one
+        
+        Parameters
+        ----------
+        beampath: Beampath
+            beampath to append
+        """
+        # Check if new beampath has an image
+        if isinstance(beampath.list_elements[-1], Image):
+            if isinstance(beampath.list_elements[-3], Exit):
+                lastidx = -4
+            else:
+                lastidx = -3
+        else:
+            lastidx = -1
+        lastidx += len(beampath.list_elements)+1
+        list_to_append = beampath.list_elements[1:lastidx]
+        # Check if self has an image
+        add_image = False
+        if isinstance(self.list_elements[-1], Image):
+            self.remove_image()
+            add_image = True
+        self.list_elements.extend(list_to_append)
+        self._recalculate()
+        if add_image:
+            self.add_image()
+        
+    def remove_image(self):
+        """
+        Remove image from the beam path
+        """
+        if isinstance(self.list_elements[-1], Image):
+            if isinstance(self.list_elements[-3], Exit):
+                idx_remove = -4
+            else:
+                idx_remove = -3
+            self.list_elements = self.list_elements[:(idx_remove+1)]
+            self._recalculate()
+            
+    
     def _add_exit(self):
         """
         Add an dummy exit plane
@@ -177,6 +297,37 @@ class Beampath:
         if par_error > 0.01:
             warn_message = 'Paraxial approximation is not valid: |x - sin(x)| = %.3g'%par_error
             warnings.warn(warn_message)
+    
+    def _recalculate(self):
+        """
+        Recalculate the beampath parameters
+        """
+        # Reset the parameters
+        self.radius = np.array([self.radius[0]])
+        self.angle = np.array([self.angle[0]])
+        self.index = np.array([self.index[0]])
+        self.position = np.array([self.position[0]])
+        self.M = np.identity(2)
+        
+        # Go through the list of components and recalculate
+        for idx, element in enumerate(self.list_elements):
+            if not isinstance(element, Object):
+                if isinstance(element, Interface):
+                    element.index_in = self.index[-1]
+                    element.compute_matrix()
+                    new_index = element.index_out
+                else:
+                    new_index = self.index[-1]
+                new_position = self.position[-1]
+                if isinstance(element, Freespace):
+                    new_position += element.distance
+                new_rad, new_angle = np.dot(self.list_elements[idx].M, np.array([self.radius[-1], self.angle[-1]]))
+                self.radius = np.append(self.radius, new_rad)
+                self.angle = np.append(self.angle, new_angle)
+                self.index = np.append(self.index, new_index)
+                self.position = np.append(self.position, new_position)
+                self.M = np.dot(self.list_elements[idx].M, self.M)
+        self._check_paraxial()
 
 
     def plot(self, **kwargs):
@@ -258,6 +409,9 @@ class Element:
         plot_digit = kwargs.get('plot_digit', None)
         if plot_digit is not None:
             self.__prec = '%.' + '%d'%plot_digit + 'f'
+    
+    def compute_matrix(self):
+        self.M = np.identity(2)
         
         
 class Object(Element):
@@ -266,6 +420,8 @@ class Object(Element):
     """
     def __init__(self):
         super().__init__()
+        # Initialise matrix
+        self.compute_matrix()
     
     def plot(self, ax, elem_pos, beam_path, **kwargs):
         """
@@ -309,6 +465,9 @@ class Thinlens(Element):
         """
         super().__init__()
         self.focal_length = focal_length
+        self.compute_matrix()
+    
+    def compute_matrix(self):
         self.M = np.array([[1,0],[-1/self.focal_length, 1]])
     
     def plot(self, ax, elem_pos, beam_path, **kwargs):
@@ -360,7 +519,10 @@ class Freespace(Element):
         """
         super().__init__()
         self.distance = distance
-        self.M = np.array([[1,distance],[0, 1]])
+        self.compute_matrix()
+    
+    def compute_matrix(self):
+        self.M = np.array([[1,self.distance],[0, 1]])
     
     def plot(self, ax, elem_pos, beam_path, **kwargs):
         """
@@ -434,6 +596,9 @@ class Interface(Element):
         self.index_in = index_in
         self.index_out = index_out
         self.curvature = curvature
+        self.compute_matrix()
+    
+    def compute_matrix(self):
         self.M = np.array([[1,0],[(self.index_in-self.index_out)/(self.curvature*self.index_out),
                                   self.index_in/self.index_out]])
     
@@ -476,6 +641,12 @@ class Exit(Element):
     """
     Exit plane of beam path
     """
+    
+    def __init__(self):
+        super().__init__()
+        # Initialise matrix
+        self.compute_matrix()
+        
     def plot(self, ax, elem_pos, beam_path, **kwargs):
         """
         Plot the exit plane
@@ -508,6 +679,11 @@ class Image(Element):
     """
     Image of beam path
     """
+    
+    def __init__(self):
+        super().__init__()
+        # Initialise matrix
+        self.compute_matrix()
     
     def plot(self, ax, elem_pos, beam_path, **kwargs):
         """

@@ -102,6 +102,8 @@ def norm(a):
     return a / np.max(np.abs(a))
 
 
-def text_progress_bar(iteration, num_iteration):
+def text_progress_bar(iteration, num_iteration, max_char = 50):
     """Displays a progress bar with the print function"""
-    return print('|' * (iteration + 1) + '.' * (num_iteration - iteration - 1) + ' %.1f %%' % ((iteration + 1) / num_iteration * 100), end='\r')
+    num_bar = int(np.floor(iteration/num_iteration*max_char)+1)
+    num_dot = max_char-num_bar    
+    return print('|'*(num_bar) + '.'*(num_dot) + ' %.1f %%'%((iteration+1)/num_iteration*100), end='\r')
