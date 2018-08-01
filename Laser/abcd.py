@@ -371,9 +371,108 @@ class Beampath:
         # Plot optical axis
         ax.plot([self.__xmin, self.__xmax],[0, 0], ls='-.', color='grey')
         if np.any(self.index!=self.index[0]):
-            ax.text(self.__xmin + 0.01*xrange, self.__ymin*(self.__text_offset+self.__scale_vert), 
-                    'Index:', color = self.__col_inter, ha='left', va='top')
-        return fig, ax    
+            tx_off = self._Beampath__text_offset
+            sc_vert = self._Beampath__scale_vert
+            col = self._Beampath__col_inter
+            ax.text(self.__xmin + 0.01*xrange, self.__ymin*(tx_off+sc_vert), 
+                    'Index:', color = col, ha='left', va='top')
+        return fig, ax
+    
+class GaussianBeampath(Beampath):
+    """
+    Computes the beam radius and angle according to ABCD matrices using paraxial approximation and the complex Gaussina parameter. Units should be consistent (all mm or all m)
+    """
+    
+    def __init__(self, radius=0, angle=0.1, index=1, position=0, wavelength=8e-7):
+        """
+        Initialise beam path with an object
+        
+        Parameters
+        ----------
+        radius: float, optional
+            Radius of the object
+            
+        angle: float, optional
+            Half divergence angle in radians
+            
+        index: float, optional
+            Initial index of refraction
+            
+        position: float, optional
+            Longitudinal position of the object
+        """
+        super().__init__(radius, angle, index, position)
+        self.wavelength = wavelength
+        
+   
+    def add_thinlens(self, focal_length):
+        """
+        Add a thin lens to the optical path and calculates the new beam parameters
+        
+        Parameters
+        ----------
+        focal_length: float
+            Focal length of the thin lens.
+            Can be positive or negative but not zero
+        """
+        self.list_elements.append(Thinlens(focal_length))
+        q1 = rth_to_q(self.radius[-1], self.angle[-1], self.index[-1], self.wavelength)
+        q2 = gauss_abcd(q1, self.list_elements[-1].M)
+        new_rad, new_angle = q_to_rth(q2, self.index[-1], self.wavelength)
+        self.radius = np.append(self.radius, new_rad)
+        self.angle = np.append(self.angle, new_angle)
+        self.index = np.append(self.index, self.index[-1])
+        self.position = np.append(self.position, self.position[-1])
+        self.M = np.dot(self.list_elements[-1].M, self.M)
+        self._check_paraxial()
+    
+    def add_freespace(self, distance):
+        """
+        Add free space propagation to the optical path and calculates the new beam parameters
+        
+        Parameters
+        ----------
+        distance: float
+            Distance of propagation in free space.
+            Can be negative but be careful of the results.
+            Cannot be zero.
+        """
+        self.list_elements.append(Freespace(distance))
+        q1 = rth_to_q(self.radius[-1], self.angle[-1], self.index[-1], self.wavelength)
+        q2 = gauss_abcd(q1, self.list_elements[-1].M)
+        new_rad, new_angle = q_to_rth(q2, self.index[-1], self.wavelength)
+        self.radius = np.append(self.radius, new_rad)
+        self.angle = np.append(self.angle, new_angle)
+        self.index = np.append(self.index, self.index[-1])
+        self.position = np.append(self.position, self.position[-1]+distance)
+        self.M = np.dot(self.list_elements[-1].M, self.M)
+        self._check_paraxial()
+    
+    def add_interface(self, index, curvature = np.inf):
+        """
+        Add an interface with a different medium to the optical path and calculates the new beam parameters
+        
+        Parameters
+        ----------
+        index: float
+            Index of refraction after the interface.
+            
+        curvature: float, optional
+            Radius of curvature of the interface.
+            Positive means convexe surface, negative means concave surface.
+            Infinite radius is a flat surface.
+        """
+        self.list_elements.append(Interface(index, self.index[-1], curvature))
+        self.index = np.append(self.index, index)
+        q1 = rth_to_q(self.radius[-1], self.angle[-1], self.index[-1], self.wavelength)
+        q2 = gauss_abcd(q1, self.list_elements[-1].M)
+        new_rad, new_angle = q_to_rth(q2, self.index[-1], self.wavelength)
+        self.radius = np.append(self.radius, new_rad*np.sqrt(self.index[-2]/self.index[-1]))
+        self.angle = np.append(self.angle, new_angle)
+        
+        self.position = np.append(self.position, self.position[-1])
+        self.M = np.dot(self.list_elements[-1].M, self.M)
+        self._check_paraxial()
 
     
 class Element:
@@ -534,7 +633,7 @@ class Freespace(Element):
             Axis in which the thin lens should be drawn
         
         elem_pos: float
-            Longitudinal position where the free space is placed
+            Index of Freespace in beam path
         
         beam_path: Beampath
             Beampath containing the free space
@@ -548,8 +647,22 @@ class Freespace(Element):
         col = self._Element__color['beam']
         col2 = self._Element__color['interface']
         alp = self._Element__alpha_beam
-        pos = beam_path.position[elem_pos-1:elem_pos+1]
-        rad = beam_path.radius[elem_pos-1:elem_pos+1]
+        if isinstance(beam_path, GaussianBeampath):
+            tmp_bp = GaussianBeampath(radius=beam_path.radius[elem_pos-1],
+                                angle=beam_path.angle[elem_pos-1],
+                                index=beam_path.index[elem_pos-1],
+                                wavelength=beam_path.wavelength)
+            N = 100
+            step = self.distance/N
+            for i in range(N):
+                tmp_bp.add_freespace(step)
+            rad = tmp_bp.radius
+            pos = tmp_bp.position
+            pos += beam_path.position[elem_pos-1]
+        else:
+            pos = beam_path.position[elem_pos-1:elem_pos+1]
+            rad = beam_path.radius[elem_pos-1:elem_pos+1]
+        pos_lim = beam_path.position[elem_pos-1:elem_pos+1]
         n = beam_path.index[elem_pos]
         prec = self._Element__prec
         # Plot beam path
@@ -565,8 +678,8 @@ class Freespace(Element):
         ax.fill_between(pos, rad, -rad, facecolor=col, alpha=alp)
         # If there is a change of index, overlay a shadowed area according to the refractive index
         if np.any(beam_path.index!=beam_path.index[0]):
-            ax.fill_between(pos, [ymax, ymax], [ymin, ymin], facecolor = col2, alpha = (1-1/n))
-            ax.text(np.mean(pos), (sc+tx)*ymin, (prec%n).rstrip('0').rstrip('.'), 
+            ax.fill_between(pos_lim, [ymax, ymax], [ymin, ymin], facecolor = col2, alpha = (1-1/n))
+            ax.text(np.mean(pos_lim), (sc+tx)*ymin, (prec%n).rstrip('0').rstrip('.'), 
                         color=col2, ha = 'center', va='top')
 
 class Interface(Element):
@@ -721,3 +834,33 @@ class Image(Element):
         else: # Othewise, annote the figure that the image is at infinity
             ax.text(xmax - 0.01*xrange, yrange*0.01, 'Image', color=col, ha='right', va='bottom')
             ax.text(xmax - 0.01*xrange, -yrange*0.01, 'at \u221E \u2192', color=col, ha='right', va='top')
+
+def gauss_abcd(q1, M):
+    A = M[0,0]
+    B = M[0,1]
+    C = M[1,0]
+    D = M[1,1]
+    q2 = (A*q1+B)/(C*q1+D)
+    return q2
+
+def rth_to_q(radius, angle, index=1.0, wavelength=8e-7):
+    curv = radius/np.tan(angle)
+    qinv = 1/curv - 1j*wavelength/(np.pi*index*radius**2)
+    return 1/qinv
+
+def q_to_rth(q, index=1.0, wavelength=8e-7):
+    qinv = 1/q
+    curv = 1/qinv.real
+    radius = np.sqrt(-(wavelength/qinv.imag)/np.pi/index)
+    angle = np.arctan(radius/curv)
+    return radius, angle
+
+def waist_from_nf(radius, angle, wavelength):
+    """
+    Calculates the Gaussian beam waist parameters from a near field radius and divergence
+    """    
+    w0 = radius * np.sqrt( ( 1 - np.sqrt( 1 - ( 2*wavelength / ( radius * np.pi * np.tan(angle) ) )**2 ) ) / 2 )
+    zr = w0**2*np.pi/wavelength
+    z0 = -radius / np.tan(angle)
+    return w0, zr, z0
+
