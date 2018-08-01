@@ -107,3 +107,12 @@ def text_progress_bar(iteration, num_iteration, max_char = 50):
     num_bar = int(np.floor(iteration/num_iteration*max_char)+1)
     num_dot = max_char-num_bar    
     return print('|'*(num_bar) + '.'*(num_dot) + ' %.1f %%'%((iteration+1)/num_iteration*100), end='\r')
+
+def waist_from_nf(radius, angle, wavelength):
+    """
+    Calculates the Gaussian beam waist parameters from a near field radius and divergence
+    """    
+    w0 = radius * np.sqrt( ( 1 - np.sqrt( 1 - ( 2*wavelength / ( radius * np.pi * np.tan(angle) ) )**2 ) ) / 2 )
+    zr = w0**2*np.pi/wavelength
+    z0 = -radius / np.tan(angle)
+    return w0, zr, z0
