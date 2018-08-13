@@ -1,13 +1,26 @@
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from numpy.random import rand
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes, InsetPosition
 
 def plot_zoom_inset(ax, xy1, xy2, loc=1, scale = (1.,1.), offset = (0.05,0.05),
-                    shadow_offset = (0.02,0.02), color = 'grey', alpha=0.2, edges=[1,2,3,4]):
+                    shadow_offset = (0.02,0.02), color = 'grey', alpha=0.5, edges=[1,2,3,4]):
     """
     Add an inset to a plot with a zoom on selected data.
     The data has to be replotted, but the limits of the plot are already set.
     If used within a subplot, the offsets have to be adjusted manually to get the same spacing vertically and horizontally.
+    
+    Example
+    -------
+    import numpy as np
+    import matplotlib.pyplot as plt
+    x = np.arange(100)
+    y = np.sin(x*2*np.pi/20)*x
+    plt.plot(x, y)
+    axz = plot_zoom_inset(ax, (0,-10), (20,10), loc=2)
+    axz.plot(x, y)
+    axz2 = plot_zoom_inset(ax, (70,-20), (80,-80), loc=3)
+    axz2.plot(x, y)
     
     Parameters
     ----------
@@ -142,7 +155,8 @@ def plot_zoom_inset(ax, xy1, xy2, loc=1, scale = (1.,1.), offset = (0.05,0.05),
     ax.add_patch(shadow)
     
     # Add axis inset
-    axz = plt.axes([0,0,1,1])
+    axz = plt.axes([0,0,1,1-rand()*1e-6])
+    # rand() avoids plt.axes overwriting on the axes if creating several insets
     ip = InsetPosition(ax, relative_inset_position(def_size, loc, (scalex, scaley),
                                                    (offsetx-x_red, offsety-y_red)))
     axz.set_axes_locator(ip)
