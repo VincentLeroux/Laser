@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.constants as cst
 from scipy.interpolate import interp1d
+import os
 
 def laser_gain_step(J_in, g_in):
     """
@@ -84,7 +85,7 @@ def gain_cross_section_tisa(lambda_):
     in function of the wavelength in m
     """
     filename = os.path.join( os.path.dirname(__file__), 'data/gain_cross_section.txt' )
-    data = np.genfromtxt(filename[0],skip_header=1, delimiter='; ')
+    data = np.genfromtxt(filename,skip_header=1, delimiter='; ')
     l = data[:,0] # in nm
     s = data[:,1] # in cm^2
     cross_section = interp1d(l, s, kind='cubic', bounds_error=False, fill_value=0)
@@ -96,7 +97,7 @@ def abs_cross_section_tisa(lambda_):
     in function of the wavelength in m
     """
     filename = os.path.join( os.path.dirname(__file__), 'data/absorption_cross_section.txt' )
-    data = np.genfromtxt(filename[0],skip_header=1, delimiter='; ')
+    data = np.genfromtxt(filename,skip_header=1, delimiter='; ')
     l = data[:,0] # in nm
     s = data[:,1] # in cm^2
     cross_section = interp1d(l, s, kind='cubic', bounds_error=False, fill_value=0)
