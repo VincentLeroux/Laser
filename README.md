@@ -1,7 +1,7 @@
 # Laser
 Python modules for laser simulation
 
-25/07/2018
+13/08/2018
 
 ## List of modules:
 
@@ -15,6 +15,8 @@ Python modules for laser simulation
   - Possibility to couple it to abcd.Beampath
 - misc
   - Some general useful functions
+- plot_utils
+  - Some useful functions to plot data
 - zernike
   - Module to generate and analyse laser wavefront based on the Zernike polynomials
   - Need to add an example notebook
