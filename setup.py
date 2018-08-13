@@ -2,7 +2,7 @@ import sys
 from setuptools import setup, find_packages
 
 setup(
-    name='Laser',
+    name='laser',
     version=1.0,
     description='Laser simulation tools',
     maintainer='Vincent Leroux',
