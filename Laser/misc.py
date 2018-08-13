@@ -116,3 +116,23 @@ def waist_from_nf(radius, angle, wavelength):
     zr = w0**2*np.pi/wavelength
     z0 = -radius / np.tan(angle)
     return w0, zr, z0
+
+def rolling_window(a, window):
+    """
+    Reshapes an array to calculate rolling statistics
+    """
+    shape = a.shape[:-1] + (a.shape[-1] - window + 1, window)
+    strides = a.strides + (a.strides[-1],)
+    return np.lib.stride_tricks.as_strided(a, shape=shape, strides=strides)
+
+def rolling_mean(a, window):
+    """
+    Computes the rolling mean
+    """
+    return np.nanmean(rolling_window(a, window), axis=-1)
+
+def rolling_std(a, window):
+    """
+    Computes the rolling standard deviation
+    """
+    return np.nanstd(rolling_window(a, window), axis=-1)
