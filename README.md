@@ -1,5 +1,5 @@
-# Laser
-Python modules for laser simulation
+# laser
+Python modules for laser simulation, contained in the folder `laser`
 
 14/08/2018
 
