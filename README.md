@@ -1,23 +1,23 @@
 # laser
-Python modules for laser simulation, contained in the folder `laser`
+Python modules for laser simulation, contained in the folder __laser__
 
 14/08/2018
 
 ## List of modules:
 
-- abcd:
+- __abcd__
   - Beam path calculation based on ABCD matrices, assuming paraxial approximation
-- fn_gain
+- __fn_gain__
   - Amplifier gain simulation using Frantz-Nodvik formalism. Only titanium-sapphire cross-section data available for now
   - Need to add an example notebook
-- fresnel_propag
+- __fresnel_propag__
   - Transverse 2D complex electric field propagator
   - Possibility to couple it to abcd.Beampath
-- misc
+- __misc__
   - Some general useful functions
-- plot_utils
+- __plot_utils__
   - Some useful functions to plot data
-- zernike
+- __zernike__
   - Module to generate and analyse laser wavefront based on the Zernike polynomials
 
 ## Installation
