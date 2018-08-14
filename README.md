@@ -22,5 +22,5 @@ Python modules for laser simulation, contained in the folder __laser__
 
 ## Installation
 
-Download or clone this repository and navigate into the directroy Laser. There run 
+Download or clone this repository and navigate into the directroy laser. There run 
 `python setup.py install`.
