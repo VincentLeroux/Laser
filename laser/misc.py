@@ -1,5 +1,5 @@
 import numpy as np
-
+from scipy.interpolate import interp2d
 
 def gauss2D(x, y, fwhmx, fwhmy, x0=0, y0=0, offset=0, order=1, int_FWHM=True):
     """
@@ -105,7 +105,7 @@ def norm(a):
 def text_progress_bar(iteration, num_iteration, max_char = 50):
     """Displays a progress bar with the print function"""
     num_bar = int(np.floor(iteration/num_iteration*max_char)+1)
-    num_dot = max_char-num_bar    
+    num_dot = max_char-num_bar-1    
     return print('|'*(num_bar) + '.'*(num_dot) + ' %.1f %%'%((iteration+1)/num_iteration*100), end='\r')
 
 def waist_from_nf(radius, angle, wavelength):
@@ -136,3 +136,25 @@ def rolling_std(a, window):
     Computes the rolling standard deviation
     """
     return np.nanstd(rolling_window(a, window), axis=-1)
+
+def add_noise(image, density, amplitude=1, kind='quintic', seed=None):
+    ny, nx = image.shape
+    try:
+        dx = density[0]
+        dy = density[1]
+    except TypeError:
+        dx = density
+        dy = density
+    np.random.seed(seed)
+    noise_raw = np.random.rand(int(dy), int(dx))
+    x_raw = np.arange(dx)
+    y_raw = np.arange(dy)
+    noisefunc = interp2d(x_raw,y_raw,noise_raw, kind=kind)
+    x = np.linspace(np.min(x_raw), np.max(x_raw), nx)
+    y = np.linspace(np.min(y_raw), np.max(y_raw), ny)
+    noise = noisefunc(x,y)
+    noise = (noise-np.min(noise))/np.ptp(noise)*2-1
+    
+    image_noise = image*(1+amplitude*noise)/(1+amplitude)
+    image_noise *= np.sum(image)/np.sum(image_noise)
+    return image_noise

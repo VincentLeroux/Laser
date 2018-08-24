@@ -2,13 +2,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.special import comb
 
-def zernike_map(rho, theta, index):
+def wavefront_map(rho, theta, index):
     """Generate a map of the Zernike polynomial, normalised over the unit disk.
     If index is a 1D array, the linear indexing is used.
     If index is a 2D array, the (n, m) indexing is used."""
     # Get (n, m) indices
     if np.size(index) == 1:
-        n, m = zernike_lin_to_nm(index)
+        n, m = lin_to_nm(index)
     elif np.size(index) == 2:
         n = index[0]
         m = index[1]
@@ -33,7 +33,7 @@ def zernike_map(rho, theta, index):
     wave_map[rho>1]=0
     return wave_map
 
-def zernike_nm_to_lin(n, m):
+def nm_to_lin(n, m):
     """Computes linear index from (n, m) indices"""
     if np.any(n < 0):
         raise ValueError('n should be positive')
@@ -43,7 +43,7 @@ def zernike_nm_to_lin(n, m):
         raise ValueError('|m| should be smaller than n')
     return n*(n+1)/2 + 1 + np.abs(m) - np.mod(m, 2) - np.abs(np.sign(m))*(1 + np.sign(m) - 2*np.mod(n, 2))/2
 
-def zernike_lin_to_nm(j):
+def lin_to_nm(j):
     """Computes (n, m) indices from linear index"""
     if np.any(j < 1):
         raise ValueError('j should be strictly positive')
@@ -53,7 +53,7 @@ def zernike_lin_to_nm(j):
     m = (-1)**(np.mod(l, 2) + np.mod(n, 2) + 1)*(l + np.mod(np.mod(l, 2) + np.mod(n, 2), 2))
     return n, m
 
-def zernike_project(wf_map, N_max = 66):
+def project(wf_map, N_max = 66):
     """
     Project the wavefront map on the Zernike polynomials
     """
@@ -64,19 +64,26 @@ def zernike_project(wf_map, N_max = 66):
     rho, theta = cart2pol(X,Y)
     list_z = np.zeros(N_max)
     for k in range(0,N_max):
-        z = zernike_map(rho, theta, k+1)
+        z = wavefront_map(rho, theta, k+1)
         list_z[k] = np.sum(wf_map*z)/np.sum(z*z)
     return list_z
 
-def zernike_list_to_map(zernike_list, rho, theta):
+def list_to_map(zernike_list, rho, theta):
     """
     Generate the wavefront map from the Zernike polynomials
     """
     n = zernike_list.size
     wmap = np.zeros_like(rho)
     for k in range(n):
-        wmap += zernike_list[k]*zernike_map(rho, theta, k+1)
+        wmap += zernike_list[k]*wavefront_map(rho, theta, k+1)
     return wmap
+
+def normalize_list(zernike_list, rms_amplitude):
+    """
+    Normalizes the zernike coefficients such that
+    the rms wavefront amplitude is equal to rms_amplitude.
+    """
+    return zernike_list*rms_amplitude/np.sqrt(np.sum(zernike_list**2))
 
 def cart2pol(x,y):
     """Convert cartesian to polar coordinates"""
