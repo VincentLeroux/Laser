@@ -167,7 +167,6 @@ def add_noise(image, density=None, amplitude=1, kind='quintic', seed=None):
     except TypeError:
         dx = density
         dy = density
-    print(dx, dy)
     np.random.seed(seed)
     noise_raw = np.random.rand(int(dy), int(dx))
     x_raw = np.arange(int(dx))
