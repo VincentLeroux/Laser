@@ -137,18 +137,41 @@ def rolling_std(a, window):
     """
     return np.nanstd(rolling_window(a, window), axis=-1)
 
-def add_noise(image, density, amplitude=1, kind='quintic', seed=None):
+def add_noise(image, density=None, amplitude=1, kind='quintic', seed=None):
+    """
+    Adds noise to a 2D numpy array. If "density" is specified, the noise is interpolated to have smooth variations.
+    
+    Parameters
+    ----------
+    image: 2D numpy.array
+        Image on which the noise should be added
+    
+    density: int, 2-tuple, optional
+        Noise density. if equal to the image size, equivalent to "None"
+    
+    amplitude: float, optional
+        Amplitude of the noise. If "1", image is modulated by +- 100%
+    
+    kind: {'linear', 'cubic', 'quintic'}
+        Type of 2D-interpolation. 'linear' can be used but it is pretty ugly.
+    
+    seed: int, optional
+        Seed for random number generation        
+    """
     ny, nx = image.shape
+    if density is None:
+        density = (nx,ny)
     try:
         dx = density[0]
         dy = density[1]
     except TypeError:
         dx = density
         dy = density
+    print(dx, dy)
     np.random.seed(seed)
     noise_raw = np.random.rand(int(dy), int(dx))
-    x_raw = np.arange(dx)
-    y_raw = np.arange(dy)
+    x_raw = np.arange(int(dx))
+    y_raw = np.arange(int(dy))
     noisefunc = interp2d(x_raw,y_raw,noise_raw, kind=kind)
     x = np.linspace(np.min(x_raw), np.max(x_raw), nx)
     y = np.linspace(np.min(y_raw), np.max(y_raw), ny)
