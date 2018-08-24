@@ -3,7 +3,7 @@ from scipy.interpolate import interp2d
 
 def gauss2D(x, y, fwhmx, fwhmy, x0=0, y0=0, offset=0, order=1, int_FWHM=True):
     """
-    Define a (super-)Gaussian 2D beam. Identical to laser.misc.gauss2D.
+    Define a (super-)Gaussian 2D beam.
 
     Parameters
     ----------
@@ -44,7 +44,7 @@ def gauss2D(x, y, fwhmx, fwhmy, x0=0, y0=0, offset=0, order=1, int_FWHM=True):
 
 def gauss1D(x, fwhm, x0=0, offset=0, order=1, int_FWHM=True):
     """
-    Define a (super-)Gaussian 1D beam. Identical to laser.misc.gauss2D.
+    Define a (super-)Gaussian 1D beam. Identical to laser.misc.gauss2D but in 1D.
 
     Parameters
     ----------
