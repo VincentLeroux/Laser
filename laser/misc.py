@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.interpolate import interp2d
+from scipy.interpolate import interp1d, interp2d
 
 def get_moments(image):
     """
@@ -22,6 +22,62 @@ def get_moments(image):
     sx2 = np.sum((X-cx)**2*image)/c0
     sy2 = np.sum((Y-cy)**2*image)/c0
     return cx, cy, 2*np.sqrt(sx2), 2*np.sqrt(sy2)
+
+def get_encircled_energy(image, center="centroid"):
+    """
+    Compute the encircled energy of an intensity distribution
+    
+    Parameters
+    ----------
+    image: 2D numpy array
+        Intensity distribution
+    
+    center: {"centroid", "peak"} or tuple, optional
+        Defines from which point is the encircled energy calculated.
+    """
+    # Get the center position
+    if center == "centroid":
+        cx, cy, _, _ = get_moments(image)
+    elif center == "peak":
+        cx, cy = np.unravel_index(np.argmax(image), image.shape)
+    else:
+        cx, cy = center[0], center[1]
+    
+    # build radius axis
+    ny, nx = image.shape
+    x, y = np.arange(nx), np.arange(ny)
+    Xc, Yc = np.meshgrid(x-cx,y-cy)
+    R, _ = cart2pol(Xc,Yc)
+    
+    # Sort the radius and get the index
+    idx_sort = np.argsort(R, axis=None)
+    rad_sort = R.ravel()[idx_sort]
+    
+    
+    # Get the encircled energy
+    en_circ = np.cumsum(image.ravel()[idx_sort])
+    en_circ = np.insert(en_circ, 0, 0.0)/np.sum(image)
+    rad_sort = np.insert(rad_sort, 0, 0.0)
+    
+    return rad_sort, en_circ
+
+def get_fwhm(intensity, interpolation_factor=1, kind='cubic'):
+    """
+    Get the Full Width at Half Maximum of the 1D intensity distribution
+    
+    Parameters
+    ----------
+    intensity: 1D numpy array
+        intensity distribution
+    
+    interpolation_factor: int, optional
+        Interpolate the data for a more accurate calculation
+    """
+    position = np.arange(intensity.size)
+    pos_i = np.linspace(np.min(position), np.max(position), interpolation_factor*position.size)
+    inten_i = interp1d(position[:], intensity[:], kind=kind)
+    idx = (inten_i(pos_i) >= np.max(inten_i(pos_i))*0.5).nonzero()[0]
+    return pos_i[idx[-1] + 1] - pos_i[idx[0]]
 
 def gauss2D(x, y, fwhmx, fwhmy, x0=0, y0=0, offset=0, order=1, int_FWHM=True):
     """
@@ -62,44 +118,6 @@ def gauss2D(x, y, fwhmx, fwhmy, x0=0, y0=0, offset=0, order=1, int_FWHM=True):
     if int_FWHM:
         coeff = 0.5
     return np.exp(-np.log(2) * coeff * ((2 * (x - x0) / fwhmx)**2 + (2 * (y - y0) / fwhmy)**2)**order) + offset
-
-def encircled_energy(image, center="centroid"):
-    """
-    Compute the encircled energy of an intensity distribution
-    
-    Parameters
-    ----------
-    image: 2D numpy array
-        Intensity distribution
-    
-    center: {"centroid", "peak"} or tuple, optional
-        Defines from which point is the encircled energy calculated.
-    """
-    # Get the center position
-    if center == "centroid":
-        cx, cy, _, _ = get_moments(image)
-    elif center == "peak":
-        cx, cy = np.unravel_index(np.argmax(image), image.shape)
-    else:
-        cx, cy = center[0], center[1]
-    
-    # build radius axis
-    ny, nx = image.shape
-    x, y = np.arange(nx), np.arange(ny)
-    Xc, Yc = np.meshgrid(x-cx,y-cy)
-    R, _ = cart2pol(Xc,Yc)
-    
-    # Sort the radius and get the index
-    idx_sort = np.argsort(R, axis=None)
-    rad_sort = R.ravel()[idx_sort]
-    
-    
-    # Get the encircled energy
-    en_circ = np.cumsum(image.ravel()[idx_sort])
-    en_circ = np.insert(en_circ, 0, 0.0)/np.sum(image)
-    rad_sort = np.insert(rad_sort, 0, 0.0)
-    
-    return rad_sort, en_circ
 
 def gauss1D(x, fwhm, x0=0, offset=0, order=1, int_FWHM=True):
     """
