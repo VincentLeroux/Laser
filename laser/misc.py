@@ -1,6 +1,28 @@
 import numpy as np
 from scipy.interpolate import interp2d
 
+def get_moments(image):
+    """
+    Compute image centroid and statistical waist from the intensity distribution.
+    
+    Parameters:
+    -----------
+    image: 2D numpy array
+    """
+    # Build axes in pixels
+    ny, nx = image.shape
+    x, y = np.arange(nx), np.arange(ny)
+    X, Y = np.meshgrid(x,y)
+    # Zeroth moment
+    c0 = np.sum(image)
+    # First moments
+    cx = np.sum(X*image)/c0
+    cy = np.sum(Y*image)/c0
+    # Second centered moments
+    sx2 = np.sum((X-cx)**2*image)/c0
+    sy2 = np.sum((Y-cy)**2*image)/c0
+    return cx, cy, 2*np.sqrt(sx2), 2*np.sqrt(sy2)
+
 def gauss2D(x, y, fwhmx, fwhmy, x0=0, y0=0, offset=0, order=1, int_FWHM=True):
     """
     Define a (super-)Gaussian 2D beam.
@@ -41,6 +63,43 @@ def gauss2D(x, y, fwhmx, fwhmy, x0=0, y0=0, offset=0, order=1, int_FWHM=True):
         coeff = 0.5
     return np.exp(-np.log(2) * coeff * ((2 * (x - x0) / fwhmx)**2 + (2 * (y - y0) / fwhmy)**2)**order) + offset
 
+def encircled_energy(image, center="centroid"):
+    """
+    Compute the encircled energy of an intensity distribution
+    
+    Parameters
+    ----------
+    image: 2D numpy array
+        Intensity distribution
+    
+    center: {"centroid", "peak"} or tuple, optional
+        Defines from which point is the encircled energy calculated.
+    """
+    # Get the center position
+    if center == "centroid":
+        cx, cy, _, _ = get_moments(image)
+    elif center == "peak":
+        cx, cy = np.unravel_index(np.argmax(image), image.shape)
+    else:
+        cx, cy = center[0], center[1]
+    
+    # build radius axis
+    ny, nx = image.shape
+    x, y = np.arange(nx), np.arange(ny)
+    Xc, Yc = np.meshgrid(x-cx,y-cy)
+    R, _ = cart2pol(Xc,Yc)
+    
+    # Sort the radius and get the index
+    idx_sort = np.argsort(R, axis=None)
+    rad_sort = R.ravel()[idx_sort]
+    
+    
+    # Get the encircled energy
+    en_circ = np.cumsum(image.ravel()[idx_sort])
+    en_circ = np.insert(en_circ, 0, 0.0)/np.sum(image)
+    rad_sort = np.insert(rad_sort, 0, 0.0)
+    
+    return rad_sort, en_circ
 
 def gauss1D(x, fwhm, x0=0, offset=0, order=1, int_FWHM=True):
     """
@@ -93,7 +152,7 @@ def array_trim(ar):
 
 
 def vect(N):
-    """Returns a centered array between -0.5 and 0.5"""
+    """Return a centered array between -0.5 and 0.5"""
     return np.linspace(0, N, num=N) / N - 0.5
 
 
@@ -103,14 +162,14 @@ def norm(a):
 
 
 def text_progress_bar(iteration, num_iteration, max_char = 50):
-    """Displays a progress bar with the print function"""
+    """Display a progress bar with the print function"""
     num_bar = int(np.floor(iteration/num_iteration*max_char)+1)
     num_dot = max_char-num_bar-1    
     return print('|'*(num_bar) + '.'*(num_dot) + ' %.1f %%'%((iteration+1)/num_iteration*100), end='\r')
 
 def waist_from_nf(radius, angle, wavelength):
     """
-    Calculates the Gaussian beam waist parameters from a near field radius and divergence
+    Calculate the Gaussian beam waist parameters from a near field radius and divergence
     """    
     w0 = radius * np.sqrt( ( 1 - np.sqrt( 1 - ( 2*wavelength / ( radius * np.pi * np.tan(angle) ) )**2 ) ) / 2 )
     zr = w0**2*np.pi/wavelength
@@ -119,7 +178,7 @@ def waist_from_nf(radius, angle, wavelength):
 
 def rolling_window(a, window):
     """
-    Reshapes an array to calculate rolling statistics
+    Reshape an array to calculate rolling statistics
     """
     shape = a.shape[:-1] + (a.shape[-1] - window + 1, window)
     strides = a.strides + (a.strides[-1],)
@@ -127,19 +186,19 @@ def rolling_window(a, window):
 
 def rolling_mean(a, window):
     """
-    Computes the rolling mean
+    Compute the rolling mean
     """
     return np.nanmean(rolling_window(a, window), axis=-1)
 
 def rolling_std(a, window):
     """
-    Computes the rolling standard deviation
+    Compute the rolling standard deviation
     """
     return np.nanstd(rolling_window(a, window), axis=-1)
 
 def add_noise(image, density=None, amplitude=1, kind='quintic', seed=None):
     """
-    Adds noise to a 2D numpy array. If "density" is specified, the noise is interpolated to have smooth variations.
+    Add noise to a 2D numpy array. If "density" is specified, the noise is interpolated to have smooth variations.
     
     Parameters
     ----------
