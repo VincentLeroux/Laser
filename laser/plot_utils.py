@@ -1,7 +1,9 @@
+import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from numpy.random import rand
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes, InsetPosition
+from matplotlib.colors import ListedColormap
 
 def plot_zoom_inset(ax, xy1, xy2, loc=1, scale = (1.,1.), offset = (0.05,0.05),
                     shadow_offset = (0.02,0.02), color = 'grey', alpha=0.5, edges=[1,2,3,4]):
@@ -205,3 +207,28 @@ def relative_data_position(def_size, loc, scale, offset, limx, limy, aspect, rat
     lr = (ur[0], ll[1])
     ul = (ll[0], ur[1])
     return ll, lr, ul, ur
+
+def remove_ticks():
+    """Remove ticks on current axis"""
+    plt.gca().set_xticks([])
+    plt.gca().set_yticks([])
+    
+def cmap_nicify(cmap):
+    """
+    Make the bottom of the colormap white
+    """
+    
+    my_cmap_rgba = cmap(np.arange(cmap.N))
+    # Set alpha
+    my_cmap_rgba[:,-1][:cmap.N//5] = np.sin(np.linspace(0, np.pi/2, cmap.N//5))
+    my_cmap_rgb = my_cmap_rgba.copy()
+    
+    # Transform alpha to color
+    my_cmap_rgb[:,0] = (1-my_cmap_rgba[:,-1])*1 + my_cmap_rgba[:,-1]*my_cmap_rgba[:,0]
+    my_cmap_rgb[:,1] = (1-my_cmap_rgba[:,-1])*1 + my_cmap_rgba[:,-1]*my_cmap_rgba[:,1]
+    my_cmap_rgb[:,2] = (1-my_cmap_rgba[:,-1])*1 + my_cmap_rgba[:,-1]*my_cmap_rgba[:,2]
+
+    my_cmap_rgb[:,-1] *= 0
+    my_cmap_rgb[:,-1] += 1
+
+    return ListedColormap(my_cmap_rgb)
