@@ -218,6 +218,9 @@ def cmap_nicify(cmap):
     Make the bottom of the colormap white
     """
     
+    if type(cmap) == str:
+        cmap = mpl.cm.get_cmap(cmap)
+    
     my_cmap_rgba = cmap(np.arange(cmap.N))
     # Set alpha
     my_cmap_rgba[:,-1][:cmap.N//5] = np.sin(np.linspace(0, np.pi/2, cmap.N//5))
