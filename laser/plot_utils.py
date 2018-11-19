@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from numpy.random import rand
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes, InsetPosition
 from matplotlib.colors import ListedColormap
+from matplotlib._cm import cubehelix as chelix
 
 def plot_zoom_inset(ax, xy1, xy2, loc=1, scale = (1.,1.), offset = (0.05,0.05),
                     shadow_offset = (0.02,0.02), color = 'grey', alpha=0.5, edges=[1,2,3,4]):
@@ -213,7 +214,7 @@ def remove_ticks():
     plt.gca().set_xticks([])
     plt.gca().set_yticks([])
     
-def cmap_nicify(cmap):
+def cmap_nicify(cmap, transparent=False):
     """
     Make the bottom of the colormap white
     """
@@ -226,12 +227,31 @@ def cmap_nicify(cmap):
     my_cmap_rgba[:,-1][:cmap.N//5] = np.sin(np.linspace(0, np.pi/2, cmap.N//5))
     my_cmap_rgb = my_cmap_rgba.copy()
     
-    # Transform alpha to color
-    my_cmap_rgb[:,0] = (1-my_cmap_rgba[:,-1])*1 + my_cmap_rgba[:,-1]*my_cmap_rgba[:,0]
-    my_cmap_rgb[:,1] = (1-my_cmap_rgba[:,-1])*1 + my_cmap_rgba[:,-1]*my_cmap_rgba[:,1]
-    my_cmap_rgb[:,2] = (1-my_cmap_rgba[:,-1])*1 + my_cmap_rgba[:,-1]*my_cmap_rgba[:,2]
+    if not transparent:
+        # Transform alpha to color
+        my_cmap_rgb[:,0] = (1-my_cmap_rgba[:,-1])*1 + my_cmap_rgba[:,-1]*my_cmap_rgba[:,0]
+        my_cmap_rgb[:,1] = (1-my_cmap_rgba[:,-1])*1 + my_cmap_rgba[:,-1]*my_cmap_rgba[:,1]
+        my_cmap_rgb[:,2] = (1-my_cmap_rgba[:,-1])*1 + my_cmap_rgba[:,-1]*my_cmap_rgba[:,2]
 
-    my_cmap_rgb[:,-1] *= 0
-    my_cmap_rgb[:,-1] += 1
+        my_cmap_rgb[:,-1] *= 0
+        my_cmap_rgb[:,-1] += 1
 
     return ListedColormap(my_cmap_rgb)
+
+def custom_cubehelix(gamma=1.0, start=0.0, rotation=-0.5, hue=1.0):
+    """
+    Custom cubehelix colormap, can be called using 'custom_ch'. The reversed version is also accessible using '_r'
+    """
+    mpl.cm.register_cmap(name='custom_ch', data=chelix(gamma=gamma, s=start, r=rotation, h=hue))
+    mpl.cm.register_cmap(name='custom_ch_r', cmap=plt.get_cmap('custom_ch').reversed())
+
+def truncate_cmap(cmap, minval=0., maxval=1., numcol=256):
+    """
+    Truncate a colormap and register it with '_t' at the end of the name
+    """
+    if type(cmap) == str:
+        cmap = plt.get_cmap(cmap)
+    new_cmap = mpl.colors.LinearSegmentedColormap.from_list(
+        'trunc({n},{a:.2f},{b:.2f})'.format(n=cmap.name, a=minval, b=maxval),
+        cmap(np.linspace(minval, maxval, numcol)))
+    mpl.cm.register_cmap(name=cmap.name + '_t', cmap=new_cmap)
