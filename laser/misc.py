@@ -39,7 +39,7 @@ def get_encircled_energy(image, center="centroid"):
     if center == "centroid":
         cx, cy, _, _ = get_moments(image)
     elif center == "peak":
-        cx, cy = np.unravel_index(np.argmax(image), image.shape)
+        cy, cx = np.unravel_index(np.argmax(image), image.shape)
     else:
         cx, cy = center[0], center[1]
     
@@ -158,7 +158,7 @@ def cart2pol(x, y):
 
 def pol2cart(r, theta):
     """Convert polar to cartesian coodinates"""
-    return np.real(r * exp(1j * theta)), np.imag(r * exp(1j * theta))
+    return np.real(r * np.exp(1j * theta)), np.imag(r * np.exp(1j * theta))
 
 
 def array_trim(ar):
@@ -213,6 +213,14 @@ def rolling_std(a, window):
     Compute the rolling standard deviation
     """
     return np.nanstd(rolling_window(a, window), axis=-1)
+
+def moving_average(a, window):
+    """
+    Very fast moving average
+    """
+    ret = np.cumsum(a, dtype=float)
+    ret[window:] = ret[window:] - ret[:-window]
+    return ret[window - 1:] / window
 
 def add_noise(image, density=None, amplitude=1, kind='quintic', seed=None):
     """

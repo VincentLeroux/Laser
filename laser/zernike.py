@@ -89,6 +89,25 @@ def cart2pol(x,y):
     """Convert cartesian to polar coordinates"""
     return np.abs(x+1j*y), np.angle(x+1j*y)
 
+def make_focus(wmap, imap, N = 1024):
+    """
+    Generate the Fourier transform from wavefront and intensity maps.
+    The resutling focus is scaled by the Fourier limited focus
+    """
+    n1,n2 = wmap.shape
+    if np.mod(wmap.shape, 2).any():
+        print('Please use even numbered arrays for Fourier transform')
+    padding = N//2-np.array(wmap.shape)//2
+    padding[padding<0] = 0
+    padding = [(p,) for p in padding]
+    wpad = np.pad(wmap, padding, 'constant')
+    ipad = np.pad(imap, padding, 'constant')
+    epad = np.sqrt(ipad) * np.exp( 1j * 2*np.pi * wpad )
+    efoc = np.abs(np.fft.fftshift(np.fft.fft2(epad)))**2
+    eref = np.abs(np.fft.fftshift(np.fft.fft2(np.sqrt(ipad))))**2
+    efoc /= np.max(eref)
+    return efoc[(N//2 - n1//2):(N//2 + n1//2), (N//2 - n2//2):(N//2 + n2//2)]
+
 zernike_name = ["Piston",
                 "Tilt 0°",
                 "Tilt 90°",
