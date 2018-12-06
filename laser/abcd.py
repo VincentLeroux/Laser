@@ -345,6 +345,14 @@ class Beampath:
         fig, ax = self._plot_initialise(**kwargs)
         for idx in range(len(self.list_elements)):
             self.list_elements[idx].plot(ax, idx, self, **kwargs)
+    
+    def plot_remove_labels(self):
+        """
+        Remove the labels of the plots to be able to change the xlim and ylim
+        """
+        ax = plt.gca()
+        while ax.texts != []:
+            ax.texts.remove(ax.texts[0])
         
     
     def _plot_initialise(self, **kwargs):

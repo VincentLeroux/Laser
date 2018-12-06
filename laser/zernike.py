@@ -108,6 +108,68 @@ def make_focus(wmap, imap, N = 1024):
     efoc /= np.max(eref)
     return efoc[(N//2 - n1//2):(N//2 + n1//2), (N//2 - n2//2):(N//2 + n2//2)]
 
+def focus_shift_from_zernike(defocus, astig0=None, radBeam=0.035, radDef=None, f=2.034, D=35, l0=8e-7):
+    """
+    Calculates focus shift and divergence from defocus and astigmatism 0 degree
+    
+    Parameters
+    ----------
+    defocus: float
+        zernike coefficient of defocus, in microns
+    
+    astig0: float, optional
+        zernike coefficient of astigmatism 0 degree, in microns
+    
+    radBeam: float, optional
+        beam radius, in metre
+    
+    radDef: float, optional
+        default radius, to compare measurements with different measured radii, in metre
+    
+    f: float, optional
+        focal length, in metre
+    
+    D: float, optional
+        distance from measurement to focussing optic, in metre
+    
+    l0: float, optional
+        wavelength, in metre
+        
+    """
+    if astig0 is None:
+        astig0 = np.zeros_like(defocus)
+    if radDef is None:
+        radDef = radBeam
+    
+    l0m = l0*1e6 # wavelength in microns
+    
+    cx = 4*np.sqrt(3)*( defocus + astig0/np.sqrt(2) )/l0m
+    cy = 4*np.sqrt(3)*( defocus - astig0/np.sqrt(2) )/l0m
+    cr = 4*np.sqrt(3)*defocus/l0m
+    
+    divergence_x = np.arctan(cx*l0/radBeam**2*radDef) 
+    divergence_y = np.arctan(cy*l0/radBeam**2*radDef)
+    divergence_avg = np.arctan(cr*l0/radBeam**2*radDef)
+    
+    foc_shift_x = f**2/(radBeam/divergence_x + D - f)
+    foc_shift_y = f**2/(radBeam/divergence_y + D - f)
+    foc_shift_avg = f**2/(radBeam/divergence_avg + D - f)
+    
+    return foc_shift_avg, foc_shift_x, foc_shift_y, divergence_avg, divergence_x, divergence_y
+
+def tilt_from_zernike(tilt, radBeam=0.035):
+    """Calculate pointing tilt from zernike coefficients 1 and 2
+    
+    Parameters:
+    -----------
+    tilt: float, or float numpy array
+        Tilt Zernike coefficient (1,1) and/or (1,-1), in µm
+    
+    radBeam: float, optional
+        Beam radius, in mm
+    """
+    return np.arctan(tilt)*2e-6/radBeam
+
 zernike_name = ["Piston",
                 "Tilt 0°",
                 "Tilt 90°",

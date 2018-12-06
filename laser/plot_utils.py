@@ -9,6 +9,8 @@ from matplotlib._cm import cubehelix as chelix
 def plot_zoom_inset(ax, xy1, xy2, loc=1, scale = (1.,1.), offset = (0.05,0.05),
                     shadow_offset = (0.02,0.02), color = 'grey', alpha=0.5, edges=[1,2,3,4]):
     """
+    NOT WORKING AT THE MOMENT
+    
     Add an inset to a plot with a zoom on selected data.
     The data has to be replotted, but the limits of the plot are already set.
     If used within a subplot, the offsets have to be adjusted manually to get the same spacing vertically and horizontally.
@@ -158,7 +160,7 @@ def plot_zoom_inset(ax, xy1, xy2, loc=1, scale = (1.,1.), offset = (0.05,0.05),
     ax.add_patch(shadow)
     
     # Add axis inset
-    axz = plt.axes([0,0,1,1-rand()*1e-6])
+    axz = plt.axes([0,0,1-rand()*1e-6,1-rand()*1e-6])
     # rand() avoids plt.axes overwriting on the axes if creating several insets
     ip = InsetPosition(ax, relative_inset_position(def_size, loc, (scalex, scaley),
                                                    (offsetx-x_red, offsety-y_red)))

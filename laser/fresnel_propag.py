@@ -272,3 +272,38 @@ def waist_from_nf(radius, angle, wavelength):
     zr = w0**2*np.pi/wavelength
     z0 = -radius / np.tan(angle)
     return w0, zr, z0
+
+def prop_two_steps_dim3(u1, L1, L2, l, z):
+    """
+    Fresnel propagator for 3D inputs
+    """
+    # Input dimensions
+    M, N, _ = u1.shape
+    # Calculate wave vector amplitude
+    k = 2*np.pi/l
+    
+    # Source plane
+    dx1 = L1/N
+    x1 = axis_vect(N)*dx1
+    dy1 = L1/M
+    y1 = axis_vect(M)*dy1
+    X1, Y1 = np.meshgrid(x1, y1)
+    u = u1 * np.exp( 1j * k / ( 2 * z * L1 ) * ( L1 - L2 ) * ( X1**2 + Y1**2 ) )[:,:,None]
+    u = np.fft.fftshift(np.fft.fft2(u, axes=(0,1)), axes=(0,1))
+    
+    # Dummy (frequency) plane
+    fx1 = axis_vect(N)/L1
+    fy1 = axis_vect(M)/L1
+    FX1, FY1 = np.meshgrid(fx1, fy1)
+    u = np.exp( -1j * np.pi * l * z * L1/L2 * ( FX1**2 + FY1**2 ) )[:,:,None] * u
+    u = np.fft.ifft2(np.fft.ifftshift(u, axes=(0,1)), axes=(0,1))
+    
+    # Observation plane
+    dx2 = L2/N
+    x2 = axis_vect(N)*dx2
+    dy2 = L2/M
+    y2 = axis_vect(M)*dy2
+    X2, Y2 = np.meshgrid(x2, y2)
+    u2 = L2/L1 * u * np.exp( -1j * k / ( 2 * z * L2 ) * ( L1 - L2 ) * ( X2**2 + Y2**2 ) )[:,:,None]
+    u2 *= dx1*dy1/dx2/dy2 # x1 to x2 scale adjustment
+    return u2
