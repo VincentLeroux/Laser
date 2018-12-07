@@ -216,7 +216,7 @@ def remove_ticks():
     plt.gca().set_xticks([])
     plt.gca().set_yticks([])
     
-def cmap_nicify(cmap, transparent=False):
+def cmap_nicify(cmap, transparent=False, idx_white = 0):
     """
     Make the bottom of the colormap white
     """
@@ -225,9 +225,13 @@ def cmap_nicify(cmap, transparent=False):
         cmap = mpl.cm.get_cmap(cmap)
         register = True
     
+    index_white = np.arange(2*cmap.N//5) - cmap.N//5 + idx_white
+    curve = np.sin(np.linspace(-np.pi/2, np.pi/2, 2*cmap.N//5))**2
+    clip = (index_white>=0)*(index_white<=255)
+
     my_cmap_rgba = cmap(np.arange(cmap.N))
     # Set alpha
-    my_cmap_rgba[:,-1][:cmap.N//5] = np.sin(np.linspace(0, np.pi/2, cmap.N//5))
+    my_cmap_rgba[:,-1][index_white[clip][0]:index_white[clip][-1]+1] = curve[clip]
     my_cmap_rgb = my_cmap_rgba.copy()
     
     if not transparent:
@@ -238,7 +242,7 @@ def cmap_nicify(cmap, transparent=False):
 
         my_cmap_rgb[:,-1] *= 0
         my_cmap_rgb[:,-1] += 1
-    if register:
+    if register and not idx_white:
     	mpl.cm.register_cmap(name=cmap.name + '_w', cmap=ListedColormap(my_cmap_rgb))
     else:
         return ListedColormap(my_cmap_rgb)
