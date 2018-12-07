@@ -244,12 +244,12 @@ def cmap_nicify(cmap, transparent=False):
         return ListedColormap(my_cmap_rgb)
 
 def cmap_nicify_all():
-	"""
-	Make the bottom of all colormaps white, and add them to the list of known maps with the flag '_w'
-	"""
-	for cmap in plt.colormaps():
-		if cmap[-2:] != '_w':
-			cmap_nicify(cmap, transparent=False)
+    """
+    Make the bottom of all colormaps white, and add them to the list of known maps with the flag '_w'
+    """
+    for cmap in plt.colormaps():
+        if cmap[-2:] != '_w':
+            cmap_nicify(cmap, transparent=False)
 
 def custom_cubehelix(gamma=1.0, start=0.0, rotation=-0.5, hue=1.0):
     """
