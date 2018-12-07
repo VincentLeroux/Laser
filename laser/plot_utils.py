@@ -10,7 +10,7 @@ def plot_zoom_inset(ax, xy1, xy2, loc=1, scale = (1.,1.), offset = (0.05,0.05),
                     shadow_offset = (0.02,0.02), color = 'grey', alpha=0.5, edges=[1,2,3,4]):
     """
     NOT WORKING AT THE MOMENT
-    
+
     Add an inset to a plot with a zoom on selected data.
     The data has to be replotted, but the limits of the plot are already set.
     If used within a subplot, the offsets have to be adjusted manually to get the same spacing vertically and horizontally.
@@ -220,9 +220,10 @@ def cmap_nicify(cmap, transparent=False):
     """
     Make the bottom of the colormap white
     """
-    
+    register = False
     if type(cmap) == str:
         cmap = mpl.cm.get_cmap(cmap)
+        register = True
     
     my_cmap_rgba = cmap(np.arange(cmap.N))
     # Set alpha
@@ -237,8 +238,18 @@ def cmap_nicify(cmap, transparent=False):
 
         my_cmap_rgb[:,-1] *= 0
         my_cmap_rgb[:,-1] += 1
+    if register:
+    	mpl.cm.register_cmap(name=cmap.name + '_w', cmap=ListedColormap(my_cmap_rgb))
+    else:
+        return ListedColormap(my_cmap_rgb)
 
-    return ListedColormap(my_cmap_rgb)
+def cmap_nicify_all():
+	"""
+	Make the bottom of all colormaps white, and add them to the list of known maps with the flag '_w'
+	"""
+	for cmap in plt.colormaps():
+		if cmap[-2:] != '_w':
+			cmap_nicify(cmap, transparent=False)
 
 def custom_cubehelix(gamma=1.0, start=0.0, rotation=-0.5, hue=1.0):
     """
