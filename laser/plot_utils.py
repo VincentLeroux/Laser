@@ -1,16 +1,12 @@
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from numpy.random import rand
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes, InsetPosition
 from matplotlib.colors import ListedColormap
 from matplotlib._cm import cubehelix as chelix
 
 def plot_zoom_inset(ax, xy1, xy2, loc=1, scale = (1.,1.), offset = (0.05,0.05),
                     shadow_offset = (0.02,0.02), color = 'grey', alpha=0.5, edges=[1,2,3,4]):
     """
-    NOT WORKING AT THE MOMENT
-
     Add an inset to a plot with a zoom on selected data.
     The data has to be replotted, but the limits of the plot are already set.
     If used within a subplot, the offsets have to be adjusted manually to get the same spacing vertically and horizontally.
@@ -160,11 +156,10 @@ def plot_zoom_inset(ax, xy1, xy2, loc=1, scale = (1.,1.), offset = (0.05,0.05),
     ax.add_patch(shadow)
     
     # Add axis inset
-    axz = plt.axes([0,0,1-rand()*1e-6,1-rand()*1e-6])
-    # rand() avoids plt.axes overwriting on the axes if creating several insets
-    ip = InsetPosition(ax, relative_inset_position(def_size, loc, (scalex, scaley),
-                                                   (offsetx-x_red, offsety-y_red)))
-    axz.set_axes_locator(ip)
+    nap = relative_inset_position(def_size, loc, (scalex, scaley), (offsetx-x_red, offsety-y_red)) # new axis position
+    oap = ax.get_position() # old axis position
+    axz = plt.axes([oap.x0 + nap[0]*(oap.x1-oap.x0), oap.y0 + nap[1]*(oap.y1-oap.y0), nap[2]*(oap.x1-oap.x0), nap[3]*(oap.y1-oap.y0)])
+
     # Set the limits
     axz.set_xlim(xa, xb)
     axz.set_ylim(ya, yb)
@@ -216,7 +211,7 @@ def remove_ticks():
     plt.gca().set_xticks([])
     plt.gca().set_yticks([])
     
-def cmap_nicify(cmap, transparent=False, idx_white = 0):
+def cmap_nicify(cmap, transparent=False, idx_white = 0, size_white = 51):
     """
     Make the bottom of the colormap white
     """
@@ -225,8 +220,8 @@ def cmap_nicify(cmap, transparent=False, idx_white = 0):
         cmap = mpl.cm.get_cmap(cmap)
         register = True
     
-    index_white = np.arange(2*cmap.N//5) - cmap.N//5 + idx_white
-    curve = np.sin(np.linspace(-np.pi/2, np.pi/2, 2*cmap.N//5))**2
+    index_white = np.arange(2*size_white-1) - size_white + idx_white
+    curve = np.sin(np.linspace(-np.pi/2, np.pi/2, 2*size_white-1))**2
     clip = (index_white>=0)*(index_white<=255)
 
     my_cmap_rgba = cmap(np.arange(cmap.N))
