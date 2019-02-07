@@ -211,7 +211,7 @@ def remove_ticks():
     plt.gca().set_xticks([])
     plt.gca().set_yticks([])
     
-def cmap_nicify(cmap, transparent=False, idx_white = 0, size_white = 51):
+def cmap_nicify(cmap, transparent=False, idx_white = 0, size_white = None):
     """
     Make the bottom of the colormap white
     """
@@ -219,11 +219,12 @@ def cmap_nicify(cmap, transparent=False, idx_white = 0, size_white = 51):
     if type(cmap) == str:
         cmap = mpl.cm.get_cmap(cmap)
         register = True
-    
-    index_white = np.arange(2*size_white-1) - size_white + idx_white
+    if size_white is None:
+        size_white = cmap.N//5
+        
+    index_white = np.arange(2*size_white-1) - size_white + idx_white + 1
     curve = np.sin(np.linspace(-np.pi/2, np.pi/2, 2*size_white-1))**2
-    clip = (index_white>=0)*(index_white<=255)
-
+    clip = (index_white>=0)*(index_white<=(cmap.N-1))
     my_cmap_rgba = cmap(np.arange(cmap.N))
     # Set alpha
     my_cmap_rgba[:,-1][index_white[clip][0]:index_white[clip][-1]+1] = curve[clip]
@@ -238,7 +239,7 @@ def cmap_nicify(cmap, transparent=False, idx_white = 0, size_white = 51):
         my_cmap_rgb[:,-1] *= 0
         my_cmap_rgb[:,-1] += 1
     if register and not idx_white:
-    	mpl.cm.register_cmap(name=cmap.name + '_w', cmap=ListedColormap(my_cmap_rgb))
+        mpl.cm.register_cmap(name=cmap.name + '_w', cmap=ListedColormap(my_cmap_rgb))
     else:
         return ListedColormap(my_cmap_rgb)
 
@@ -246,9 +247,12 @@ def cmap_nicify_all():
     """
     Make the bottom of all colormaps white, and add them to the list of known maps with the flag '_w'
     """
+    deprecated_maps = ['Vega10','Vega10_r','Vega20','Vega20_r',
+    'Vega20b','Vega20b_r','Vega20c','Vega20c_r','spectral','spectral_r']
     for cmap in plt.colormaps():
         if cmap[-2:] != '_w':
-            cmap_nicify(cmap, transparent=False)
+            if cmap not in deprecated_maps:
+                cmap_nicify(cmap, transparent=False)
 
 def custom_cubehelix(gamma=1.0, start=0.0, rotation=-0.5, hue=1.0):
     """
