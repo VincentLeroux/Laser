@@ -69,6 +69,21 @@ def haso_to_lin(j):
     n,m = haso_to_nm(j)
     return nm_to_lin(n,m)
 
+def nm_to_haso(n,m):
+    """Computes HASO linear index from (n, m) indices"""
+    if np.any(n < 0):
+        raise ValueError('n should be positive')
+    if np.any(np.mod(n,2) != np.mod(m, 2)):
+        raise ValueError('n and m should have the same parity')
+    if np.any(np.abs(m) > n):
+        raise ValueError('|m| should be smaller than n')
+    return ( ( n + np.abs(m) ) / 2 + 1 )**2 - np.abs( 2 * m ) + ( m < 0 ) - 1
+
+def lin_to_haso(j):
+    """Computes HASO linear index from Phasics linear index"""
+    n,m = lin_to_nm(j)
+    return nm_to_haso(n,m)
+
 def project(wf_map, N_max = 66):
     """
     Project the wavefront map on the Zernike polynomials
