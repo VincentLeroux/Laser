@@ -299,7 +299,7 @@ def truncate_cmap(cmap, minval=0., maxval=1., numcol=256):
     mpl.cm.register_cmap(name=cmap.name + '_t', cmap=new_cmap)
 
 
-def color_lighten(color, factor):
+def color_lighten(color, factor=0.33):
     """
     Returns RGB tuple from a color string. Lightens by 'factor'.
     0 is unchanged, 1 is white
@@ -307,7 +307,7 @@ def color_lighten(color, factor):
     return tuple([(1 - c) * factor + c for c in mpl.colors.to_rgb(color)])
 
 
-def color_darken(color, factor):
+def color_darken(color, factor=0.33):
     """
     Returns RGB tuple from a color string. Darkens by 'factor'.
     0 is black, 1 is unchanged
