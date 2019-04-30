@@ -156,7 +156,7 @@ def make_focus(wmap, imap, N=1024):
     return efoc[(N // 2 - n1 // 2):(N // 2 + n1 // 2), (N // 2 - n2 // 2):(N // 2 + n2 // 2)]
 
 
-def focus_shift_from_zernike(defocus, astig0=None, radBeam=0.035, radDef=None, f=2.034, D=35, l0=8e-7):
+def focus_shift_from_zernike(defocus, astig0=None, radBeam=0.035, radDef=None, f=2.034, D=35):
     """
     Calculates focus shift and divergence from defocus and astigmatism 0 degree
 
@@ -179,25 +179,19 @@ def focus_shift_from_zernike(defocus, astig0=None, radBeam=0.035, radDef=None, f
 
     D: float, optional
         distance from measurement to focussing optic, in metre
-
-    l0: float, optional
-        wavelength, in metre
-
     """
     if astig0 is None:
         astig0 = np.zeros_like(defocus)
     if radDef is None:
         radDef = radBeam
 
-    l0m = l0 * 1e6  # wavelength in microns
+    cx = 4 * np.sqrt(3) * (defocus + astig0 / np.sqrt(2)) * 1e-6
+    cy = 4 * np.sqrt(3) * (defocus - astig0 / np.sqrt(2)) * 1e-6
+    cr = 4 * np.sqrt(3) * defocus * 1e-6
 
-    cx = 4 * np.sqrt(3) * (defocus + astig0 / np.sqrt(2)) / l0m
-    cy = 4 * np.sqrt(3) * (defocus - astig0 / np.sqrt(2)) / l0m
-    cr = 4 * np.sqrt(3) * defocus / l0m
-
-    divergence_x = np.arctan(cx * l0 / radBeam**2 * radDef)
-    divergence_y = np.arctan(cy * l0 / radBeam**2 * radDef)
-    divergence_avg = np.arctan(cr * l0 / radBeam**2 * radDef)
+    divergence_x = np.arctan(cx / radBeam**2 * radDef)
+    divergence_y = np.arctan(cy / radBeam**2 * radDef)
+    divergence_avg = np.arctan(cr / radBeam**2 * radDef)
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -206,6 +200,37 @@ def focus_shift_from_zernike(defocus, astig0=None, radBeam=0.035, radDef=None, f
         foc_shift_avg = f**2 / (radBeam / divergence_avg + D - f)
 
     return foc_shift_avg, foc_shift_x, foc_shift_y, divergence_avg, divergence_x, divergence_y
+
+
+def zernike_from_focus_shift(dz_x, dz_y=None, radBeam=0.035, f=2.034, D=35):
+    """
+    Calculates defocus and astigmatism 0 degree (in microns) from X and Y focus shift
+
+    Parameters
+    ----------
+    dz_x: float
+        Focus shift in X, in m
+
+    dz_y: float or None, optional
+        focus shift in Y, in m.
+        If None, it is the same as dz_x
+
+    radBeam: float, optional
+        beam radius in near field, in metre
+
+    f: float, optional
+        focal length, in metre
+
+    D: float, optional
+        distance from measurement to focussing optic, in metre
+    """
+    if dz_y is None:
+        dz_y = dz_x
+    Zx = radBeam / (4 * np.sqrt(3)) * np.tan(radBeam / (f**2 / dz_x - D + f))
+    Zy = radBeam / (4 * np.sqrt(3)) * np.tan(radBeam / (f**2 / dz_y - D + f))
+    defocus = (Zx + Zy) / 2 * 1e6
+    astig0 = (Zx - Zy) * np.sqrt(2) / 2 * 1e6
+    return defocus, astig0
 
 
 def tilt_from_zernike(tilt, radBeam=0.035):
