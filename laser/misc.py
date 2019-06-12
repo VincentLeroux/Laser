@@ -1,5 +1,7 @@
 import numpy as np
 from scipy.interpolate import interp1d, interp2d
+from scipy.optimize import curve_fit
+import matplotlib.image as mpimg
 
 
 def get_moments(image):
@@ -278,3 +280,163 @@ def add_noise(image, density=None, amplitude=1, kind='quintic', seed=None):
     image_noise = image * (1 + amplitude * noise) / (1 + amplitude)
     image_noise *= np.sum(image) / np.sum(image_noise)
     return image_noise
+
+def RGB_image_to_grayscale(image_path, reverse_scale=True, crop=None, downsample=None):
+    """
+    Convert RGB colors to lightness grayscale
+    
+    Parameters:
+    ===========
+    image_path: str
+        location of the image to import and convert to greyscale
+    
+    reverse_scale: boolean, optional
+        choose to flip the lightness scale or not. Stays between 0 and 1
+        
+    crop: None or 4-tuple, optional
+        Limits to crop the image
+       
+    downsample: None or int, optional
+        Downsample the data by the given amount. Currently the downsampling is
+        done by selecting data with a period given by this parameter
+    """
+    im_rgb = np.float64(mpimg.imread(image_path))/255
+    if crop is not None:
+        im_rgb = im_rgb[crop[0]:crop[1],crop[2]:crop[3]]
+    if downsample is not None:
+        im_rgb = im_rgb[::downsample,::downsample]
+    M = np.array([[0.412453,0.357580,0.180423],
+              [0.212671, 0.715160, 0.072169],
+              [0.019334, 0.119193, 0.950227]])
+    im_xyz = (M[None,None,:]@im_rgb[:,:,:,None]).squeeze()
+    L = np.zeros_like(im_xyz[:,:,0])
+    select = im_xyz[:,:,1]>(6/29)**3
+    L[select] = 116*im_xyz[select,1]**(1/3)-16
+    L[~select] = (29/3)**3*im_xyz[~select,1]
+    L /= 100
+    if reverse_scale:
+        L = 1-L
+    return L
+
+def norm_minmax(a):
+    """
+    Normalize the data by setting the minimum at 0 and the maximum at 1.
+    
+    Parameters:
+    ===========
+    a: numpy.array
+        Data to normalize
+    """
+    return (a-a.min())/(a.max()-a.min())
+
+def get_ellipse_moments(image, dx=1, dy=1, cut=None):
+    """
+    Compute the moments of the beam profile and give the ellipse parameters.
+    
+    Parameters:
+    ===========
+    image: 2D numpy.array
+        Intensity profile of the data
+    
+    dx: float, optional
+        Step of the horizontal axis. Defaults to 1
+    
+    dy: float, optional
+        Step of the vertical axis. Defaults to 1
+    
+    cut: None or float, optional
+        Threshold below which the data is ignored
+    
+    Outputs:
+    ========
+    cx: float
+        Horizontal position of the center of mass
+    
+    cy: float
+        Vertical position of the center of mass
+    
+    rx: float
+        Radius of the ellipse close to the horizontal axis
+    
+    ry: float
+        Radius of the ellipse close to the vertical axis
+    
+    theta: float
+        Angle of the ellipse from the horizontal axis
+    
+    gamma: float
+        If gamma = 1, rx is the major axis.
+        If gamma = -1, ry is the major axis.
+    """
+    im = image.copy()
+    if cut is not None:
+        im[im<cut]=0
+    # Build axes in pixels
+    ny, nx = im.shape
+    x, y = np.arange(nx), np.arange(ny)
+    X, Y = np.meshgrid(x, y)
+    # Zeroth moment
+    c0 = np.sum(im)
+    # First moments
+    cx = np.sum(X * im) / c0
+    cy = np.sum(Y * im) / c0
+    # Second centered moments
+    sx2 = np.sum((X - cx)**2 * im) / c0
+    sy2 = np.sum((Y - cy)**2 * im) / c0
+    sxy = np.sum((Y - cy) * (X - cx) * im) / c0
+    # Derived quantities
+    gamma = np.sign(sx2-sy2)
+    cor_term = gamma * np.sqrt((sx2 - sy2)**2 + 4 * sxy**2)
+    rx = np.sqrt(2 * ( sx2 + sy2 + cor_term ))
+    ry = np.sqrt(2 * ( sx2 + sy2 - cor_term ))
+    theta = 0.5 * np.arctan(2 * sxy / (sx2 - sy2))
+    cx *= dx
+    cy *= dy
+    rx *= dx
+    ry *= dy
+    return cx, cy, rx, ry, theta, gamma
+
+def biquad(X, c, x1, y1, x2, y2, xy):
+    """
+    Biquadratic surface, for curve fitting
+    """
+    x,y = X
+    return x2*x**2 + y2*y**2 + xy*x*y + x1*x + y1*y + c
+
+def bilin(X, c, x1, y1):
+    """
+    Bilinear surface, for curve fitting
+    """
+    x,y = X
+    return x1*x + y1*y + c
+
+def remove_baseline(image, threshold, quadratic=True):
+    """
+    Fit the baseline of a 2D image and removes it from this image.
+    
+    Parameters:
+    ===========
+    image: 2D numpy.array
+        Intensity profile of the data
+        
+    threshold: float
+        Threshold below which the data is considered for the baseline fit
+    
+    quadratic: boolean, optional
+        If True, a biquadratic fit is used to calculate the baseline.
+        If False, a bilinear fit is used.
+    """
+    ny,nx = image.shape
+    x = np.linspace(0,1,nx)
+    y = np.linspace(0,1,ny)
+    X,Y = np.meshgrid(x,y)
+    select = image<threshold
+    base_data = image[select]
+    Xb, Yb = X[select], Y[select]
+    if quadratic:
+        c, x1, y1, x2, y2, xy = curve_fit(biquad, (Xb, Yb), base_data, p0=[0]*6)[0]
+        baseline = x2*X**2 + y2*Y**2 + xy*X*Y + x1*X + y1*Y + c
+    else:
+        c, x1, y1 = curve_fit(bilin, (Xb, Yb), base_data, p0=[0]*3)[0]
+        baseline = x1*X + y1*Y + c
+    return (image - baseline)
