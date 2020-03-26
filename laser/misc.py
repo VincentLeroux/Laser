@@ -27,7 +27,7 @@ def get_moments(image):
     return cx, cy, 2 * np.sqrt(sx2), 2 * np.sqrt(sy2)
 
 
-def get_encircled_energy(image, center="centroid"):
+def get_encircled_energy(image, center="geometric"):
     """
     Compute the encircled energy of an intensity distribution
 
@@ -36,11 +36,15 @@ def get_encircled_energy(image, center="centroid"):
     image: 2D numpy array
         Intensity distribution
 
-    center: {"centroid", "peak"} or tuple, optional
+    center: {"geometric", "centroid", "peak"} or tuple, optional
         Defines from which point is the encircled energy calculated.
     """
     # Get the center position
-    if center == "centroid":
+    if center == "geometric":
+        mask = np.zeros_like(image)
+        mask[image>=(image.max()/3)] = 1
+        cx, cy, _, _ = get_moments(mask)
+    elif center == "centroid":
         cx, cy, _, _ = get_moments(image)
     elif center == "peak":
         cy, cx = np.unravel_index(np.argmax(image), image.shape)
@@ -370,7 +374,8 @@ def get_ellipse_moments(image, dx=1, dy=1, cut=None):
     """
     im = image.copy()
     if cut is not None:
-        im[im<cut]=0
+        im -= cut
+        im[im<0]=0
     # Build axes in pixels
     ny, nx = im.shape
     x, y = np.arange(nx), np.arange(ny)
@@ -440,3 +445,34 @@ def remove_baseline(image, threshold, quadratic=True):
         c, x1, y1 = curve_fit(bilin, (Xb, Yb), base_data, p0=[0]*3)[0]
         baseline = x1*X + y1*Y + c
     return (image - baseline)
+    
+def dx (x):
+    return np.mean(np.diff(x))
+
+def polygauss(x, y, fwhmx, fwhmy, x0=0, y0=0, theta=0, offset=0, order=1, polygon=None, angle=0, int_FWHM=True):
+    """
+    Returns a 2D (super-)Gaussian beam with a polygonal geometry.
+    """
+    xr = np.zeros_like(x)
+    yr = np.zeros_like(y)
+    xr = np.cos(theta)*x - np.sin(theta)*y
+    yr = np.sin(theta)*x + np.cos(theta)*y
+    coeff = 1.0
+    if int_FWHM:
+        coeff = 0.5
+    profile = np.zeros_like(x)
+    
+    if polygon is None or polygon < 5:
+        profile = np.exp(-np.log(2) * coeff * ((2 * (xr - x0) / fwhmx)**2 + (2 * (yr - y0) / fwhmy)**2)**order) + offset
+    else:
+        axes = np.linspace(0,2*np.pi, num=polygon, endpoint=False)
+        Xp = np.cos(axes[None,None,:]+angle)*(xr[:,:,None]-x0)/fwhmx + np.sin(axes[None,None,:]+angle)*(yr[:,:,None]-y0)/fwhmy
+        Xp[Xp<0]=0
+        profile = np.exp(-np.log(2) * coeff * np.sum( (2*Xp)**(2*order) , axis=-1)) + offset
+    return profile
+    
+def change_sigma_def(sigma_in, level_in, level_out, order_sg):
+    """
+    Calculate the waist at 'level_out' of the max from the waist at 'level_in' for a (super-)Gaussian beam. For example change_sigma_def(10, 0.5, 0.1, 4) gives the full width at 10% for a 4th order super_Gaussian with a FWHM of 10.
+    """
+    return sigma_in * (np.log(level_out)/np.log(level_in))**(1/order_sg)
