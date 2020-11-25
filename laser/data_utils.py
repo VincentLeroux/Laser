@@ -1,10 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from laser.misc import polygauss, add_noise, biquad, norm_minmax, remove_baseline, get_ellipse_moments, get_fwhm, get_moments, cart2pol, dx
+from laser.misc import polygauss, add_noise, biquad, norm_minmax, remove_baseline, get_ellipse_moments, get_fwhm, get_moments, cart2pol, dx, gauss2D
 from scipy.optimize import curve_fit
 from scipy.ndimage import gaussian_filter1d
 from scipy.interpolate import interp1d
 from laser.plot_utils import cmap_nicify
+from skimage.transform import downscale_local_mean
+from typing import Any
+
 
 def load_oceanoptics_spectra(filename):
     """
@@ -20,13 +23,13 @@ def load_oceanoptics_spectra(filename):
         data_raw = np.loadtxt(filename)
     except ValueError:
         data_raw = np.loadtxt(filename, dtype=str)
-        N = data_raw.shape[0]
+        n = data_raw.shape[0]
         data_raw = [np.float64(s.replace(',','.')) for s in data_raw.flatten()]
-        data_raw = np.reshape(data_raw, [N, len(data_raw)//N])
+        data_raw = np.reshape(data_raw, [n, len(data_raw)//n])
     return data_raw
 
 
-def random_beam_generator(N):
+def random_beam_generator(n):
     """
     Generate a beam profile with a random position, size,
     ellipticity, super-Gaussian order, with background noise
@@ -35,10 +38,10 @@ def random_beam_generator(N):
     
     Parameters
     ----------
-    N: int
-        Size of output nd.array (N x N)
+    n: int
+        Size of output nd.array (n x n)
     """
-    x = np.linspace(-1,1,N)
+    x = np.linspace(-1,1,n)
     X,Y = np.meshgrid(x,x)
     fwhmx = (np.random.rand()/0.3+0.1)/2
     fwhmy = (np.random.rand()/0.3+0.1)/2
@@ -49,7 +52,7 @@ def random_beam_generator(N):
     polygon=np.random.randint(1,10)
     angle=np.random.rand()*2*np.pi
     p = polygauss(X,Y,fwhmx,fwhmy,x0,y0,theta, order=order, polygon=polygon, angle=angle)
-    p = add_noise(p, density=N/(np.random.rand()*10+1), amplitude=np.random.rand()/2+0.5)
+    p = add_noise(p, density=n/(np.random.rand()*10+1), amplitude=np.random.rand()/2+0.5)
     
     c = np.random.rand()
     x1 = np.random.rand()-0.5
@@ -61,8 +64,8 @@ def random_beam_generator(N):
     b = np.random.rand()*norm_minmax(b)
     b += np.random.rand()**2*np.random.rand(*b.shape)
     return p+b
-    
-    
+
+
 def dualgauss(x, x1, x2, w1, w2, a1, a2):
     """
     Sum of two Gaussian distributions. For curve fitting.
@@ -94,7 +97,7 @@ def dualgauss(x, x1, x2, w1, w2, a1, a2):
     return a1*np.exp(-0.5*((x-x1)/w1)**2)+a2*np.exp(-0.5*((x-x2)/w2)**2)
 
     
-def beam_analysis (image, x, y, baseline=None, plot=True, unit='mm', tilt_cutoff=None, beam_energy=None):
+def beam_analysis (image, x, y, baseline=None, plot=True, unit='mm', tilt_cutoff=None, beam_energy=None, unit_en = 'J', threshold_fluence=None, threshold_fluence2=None):
     """
     Automatic analysis of laser beam intensity profile.
     
@@ -127,9 +130,12 @@ def beam_analysis (image, x, y, baseline=None, plot=True, unit='mm', tilt_cutoff
         If None (default), the threshold is 1/3 of the plateau average values
     
     beam_energy: None or float, optional
-        Energy contained within the image, in J.
+        Energy contained within the image, with the unit defined by unit_en.
         If None (default), the output is in arbitrary units.
-        If float, the fluence is calculated in J/unit^2
+        If float, the fluence is calculated in unit_en/unit^2
+        
+    unit_en: str, optional
+        Unit of the energy. Default is 'J'.
     
     Output
     ------
@@ -162,7 +168,7 @@ def beam_analysis (image, x, y, baseline=None, plot=True, unit='mm', tilt_cutoff
             
             * top_rms: float, rms fluctuation of the plateau, relative to the mean
             
-            * top_ptp: float, peak-to-peak amplitude of the pleteau, relative to the mean
+            * top_ptp: float, peak-to-peak amplitude of the plateau, relative to the mean
             
             * fit_x: np.array, result of super-Gaussian fit of the horizontal lineout,
                      contains [center, fwhm, order, amplitude]. The order is defined as x^(2*order)
@@ -171,6 +177,8 @@ def beam_analysis (image, x, y, baseline=None, plot=True, unit='mm', tilt_cutoff
                      contains [center, fwhm, order, amplitude]. The order is defined as x^(2*order)
             
             * energy: float or None, energy contained within the image.
+            
+            * unit_en: str, unit of the energy value
     """
     # Normalize image
     imc = norm_minmax(image)
@@ -210,31 +218,49 @@ def beam_analysis (image, x, y, baseline=None, plot=True, unit='mm', tilt_cutoff
         tilt_cutoff = 0.33*top_mean
     th_tilt, flatness = beam_profile_tilt(imc, tilt_cutoff)
     
-    # Fit X and Y lineouts wit super-Gaussian
+    # Fit the whole image with a 2D super-Gaussian
+    X, Y = np.meshgrid(x, y)
     try:
-        sgfitx = curve_fit(sg_fit, x, imc[np.argmin(np.abs(y-cy)), :], p0=[cx, rx*2, top_mean, 4], bounds=([-np.inf,0,0,0],4*[np.inf]))[0]
+        sgfitim = curve_fit_ds(sg2d_fit, X, Y, imc, p0=[rx*2, ry*2, cx, cy, 0,4, top_mean], bounds=([0,0,-np.inf, -np.inf, -np.inf, 0, 0], 7*[np.inf]), Nds=100)
     except RuntimeError:
-        print('Horizontal super-Gaussian fit failed....')
-        sgfitx = [0]*4
-    try:
-        sgfity = curve_fit(sg_fit, y, imc[:, np.argmin(np.abs(x-cx))], p0=[cy, ry*2, top_mean, 4], bounds=([-np.inf,0,0,0],4*[np.inf]))[0]
-    except RuntimeError:
-        print('Vertical super-Gaussian fit failed....')
-        sgfity = [0]*4
-    
-    # Build output dictionnary
+        print('2D super-Gaussian fit failed, trying lineout fits')
+        # Fit X and Y lineouts with super-Gaussian
+        try:
+            sgfitx = curve_fit(sg_fit, x, imc[np.argmin(np.abs(y-cy)), :], p0=[cx, rx*2, top_mean, 4], bounds=([-np.inf,0,0,0],4*[np.inf]))[0]
+        except RuntimeError:
+            print('Horizontal super-Gaussian fit failed....')
+            sgfitx = [0]*4
+        try:
+            sgfity = curve_fit(sg_fit, y, imc[:, np.argmin(np.abs(x-cx))], p0=[cy, ry*2, top_mean, 4], bounds=([-np.inf,0,0,0],4*[np.inf]))[0]
+        except RuntimeError:
+            print('Vertical super-Gaussian fit failed....')
+            sgfity = [0]*4
+        sgfitim = [None, sgfitx, sgfity]
+        
+    # Build output dictionary
     output_dict = {'center_x':cx, 'center_y':cy, 'radius_x':rx, 'radius_y':ry,
                     'theta_ell':theta, 'gamma_ell':gamma, 'im_filter':imc,
                     'baseline':baseline, 'flatness_axis':th_tilt, 'flatness_data':flatness,
                     'top_mean':top_mean, 'top_rms':top_rms, 'top_ptp':top_ptp,
-                    'fit_x':sgfitx, 'fit_y':sgfity, 'energy':beam_energy}
+                    'fit':sgfitim, 'energy':beam_energy, 'unit_en':unit_en}
+    
+    if threshold_fluence is not None:
+        Xp, Yp = np.meshgrid(x-cx, y-cy)
+        list_peak = np.array([[xx,yy] for xx, yy, zz in zip(Xp.flatten(), Yp.flatten(), imc.flatten()) if zz>threshold_fluence])
+    else:
+        list_peak = []
+    if threshold_fluence2 is not None:
+        Xp, Yp = np.meshgrid(x-cx, y-cy)
+        list_peak2 = np.array([[xx,yy] for xx, yy, zz in zip(Xp.flatten(), Yp.flatten(), imc.flatten()) if zz>threshold_fluence2])
+    else:
+        list_peak2 = []
     if plot:
-        beam_analysis_plot(output_dict, x, y, unit=unit)
+        beam_analysis_plot(output_dict, x, y, unit=unit, list_peak=list_peak, th_peak=threshold_fluence, list_peak2=list_peak2, th_peak2=threshold_fluence2)
     return output_dict
 
 def get_flattop_rms(image, x, y, cx, cy, rx, ry, theta, coeff=0.8):
     """
-    Compute the statistics of the plateau of a float-top beam.
+    Compute the statistics of the plateau of a flat-top beam.
     
     Parameters
     ----------
@@ -290,7 +316,7 @@ def get_flattop_rms(image, x, y, cx, cy, rx, ry, theta, coeff=0.8):
     ptp = (np.nanmax(image[R<=1]) - np.nanmin(image[R<=1]))/avg
     return avg, rms, ptp
     
-def beam_analysis_plot(data, x, y, unit='mm'):
+def beam_analysis_plot(data, x, y, unit='mm', list_peak=[], th_peak=None, list_peak2=[], th_peak2=None):
     """
     Display image, lineout and beam parameters
     
@@ -330,37 +356,50 @@ def beam_analysis_plot(data, x, y, unit='mm'):
     ix = np.argmin(np.abs(y))
     maj_ax = np.maximum(data['radius_x'],data['radius_y'])
     # plot limit
-    limplot = np.min([-x[0], -y[0], x[-1], y[-1]])
+    limplot = np.max(np.r_[np.abs(x),np.abs(y)])
+    if data['energy']:
+        title_unit = data['unit_en'] + '/'+ unit + '^2'
+    else:
+        title_unit = 'arb. units'
+    
     # Figure
-    plt.figure(figsize=(3*1.6*2,3), dpi=200)
+    plt.figure(figsize=(4*1.6*2,4), dpi=200)
     # Beam profile plot with ellipse overlay
     plt.subplot(121)
-    plt.imshow(im, extent=[x[0], x[-1], y[0], y[-1]], origin='lower', aspect=1, cmap='YlGnBu_r_w', vmin=0, vmax=data['top_mean']*(1+data['top_rms']*5))
+    plt.imshow(im, extent=[x[0], x[-1], y[0], y[-1]], origin='lower', aspect=1, cmap='YlGnBu_r_w', vmin=0, vmax=None)#data['top_mean']*(1+data['top_rms']*5))
     plt.colorbar()
     plt.plot(x_ell, y_ell, c='k', alpha=0.75, ls='--')
     plt.plot(0.8*x_ell, 0.8*y_ell, c='k', alpha=0.75, ls=':')
     plt.plot(np.array([0,maj_ax])*np.cos(thetaplot), np.array([0,maj_ax])*np.sin(thetaplot), c='k', alpha=0.75, ls='--')
     plt.axhline(y[ix], c='crimson', lw=0.5, ls=':')
     plt.axvline(x[iy], c='steelblue', lw=0.5, ls=':')
+    if len(list_peak):
+        plt.plot(list_peak[:,0], list_peak[:,1], '.', c='darkorange', label = 'F > {:.2f} '.format(th_peak) + title_unit)#, markersize=1)
+        plt.legend(loc='upper left', fontsize=8)
+    if len(list_peak2):
+        plt.plot(list_peak2[:,0], list_peak2[:,1], '.', c='r', label = 'F > {:.2f} '.format(th_peak2) + title_unit)#, markersize=1)
+        plt.legend(loc='upper left', fontsize=8)
     plt.xlim(-limplot, limplot)
     plt.ylim(-limplot, limplot)
     plt.xlabel('Horizontal axis ['+unit+']')
     plt.ylabel('Vertical axis ['+unit+']')
-    if data['energy']:
-        title_unit = 'J/'+ unit + '^2'
-    else:
-        title_unit = 'arb. units'
     plt.title('Fluence profile ['+title_unit+']')
     
     plt.subplot(122)
     plt.plot(x, im[ix,:], c='crimson', alpha=0.5, label='Horizontal')
     plt.plot(y, im[:,iy], c='steelblue', alpha=0.5, label='Vertical')
-    plt.plot(x, sg_fit(x, data['fit_x'][0]-data['center_x'], data['fit_x'][1], data['fit_x'][2], data['fit_x'][3]), 
-             c='crimson', label='FWHM = {:.2f} '.format(data['fit_x'][1])+unit+', order = {:.1f}'.format(data['fit_x'][2]))
-    plt.plot(y, sg_fit(y, data['fit_y'][0]-data['center_y'], data['fit_y'][1], data['fit_y'][2], data['fit_y'][3]), 
-             c='steelblue', label='FWHM = {:.2f} '.format(data['fit_y'][1])+unit+', order = {:.1f}'.format(data['fit_y'][2]))
+    if data['fit'][0] is None:
+        plt.plot(x, sg_fit(x, data['fit'][1][0]-data['center_x'], data['fit'][1][1], data['fit'][1][2], data['fit'][1][3]), 
+                 c='crimson', label='FWHM = {:.2f} '.format(data['fit'][1][1])+unit+', order = {:.1f}'.format(data['fit'][1][2]))
+        plt.plot(y, sg_fit(y, data['fit'][2][0]-data['center_y'], data['fit'][2][1], data['fit'][2][2], data['fit'][2][3]), 
+                 c='steelblue', label='FWHM = {:.2f} '.format(data['fit'][2][1])+unit+', order = {:.1f}'.format(data['fit'][2][2]))
+    else:
+        plt.plot(x, sg_fit(x, data['fit'][2]-data['center_x'], data['fit'][0], data['fit'][5], data['fit'][6]), 
+                 c='crimson', label='FWHM = {:.2f} '.format(data['fit'][0])+unit+', order = {:.1f}'.format(data['fit'][5]))
+        plt.plot(y, sg_fit(y, data['fit'][3]-data['center_y'], data['fit'][1], data['fit'][5], data['fit'][6]), 
+                 c='steelblue', label='FWHM = {:.2f} '.format(data['fit'][1])+unit+', order = {:.1f}'.format(data['fit'][5]))
     plt.xlim(-limplot, limplot)
-    plt.ylim(None,2*data['top_mean'])
+    plt.ylim(None,None)
     plt.legend(loc='upper center', ncol=2)
     plt.xlabel('Axis ['+unit+']')
     plt.ylabel('Fluence ['+title_unit+']')
@@ -372,7 +411,10 @@ def beam_analysis_plot(data, x, y, unit='mm'):
     print('Minor axis: {:.2f} '.format(2*np.minimum(data['radius_x'],data['radius_y']))+unit)
     print('Angle: {:+.1f}°'.format(np.rad2deg(thetaplot)))
     print('Ellipticity: {:.2f}'.format(np.minimum(data['radius_x'],data['radius_y'])/np.maximum(data['radius_x'],data['radius_y'])))
-    print('Super-Gaussian order: {:.1f}'.format(0.5*(data['fit_x'][2]+data['fit_y'][2])))
+    if data['fit'][0] is None:
+        print('Super-Gaussian order: {:.1f}'.format(0.5*(data['fit'][1][2]+data['fit'][2][2])))
+    else:
+        print('Super-Gaussian order: {:.1f}'.format(data['fit'][5]))
     print('Flat top RMS: {:.1f} %'.format(data['top_rms']*100))
     print('Flat top PtP: {:.1f} %'.format(data['top_ptp']*100))
     print('Flat top mean fluence: {:.3g} '.format(data['top_mean'])+title_unit)
@@ -417,8 +459,8 @@ def beam_profile_tilt(im, bw_cutoff=0.1, Nscan=101):
     """
     Measures the asymmetry/tilt of a flat-top profile
     
-    Parameters:
-    ===========
+    Parameters
+    ----------
     im: numpy.array
         Beam profile to analyze
         
@@ -435,7 +477,7 @@ def beam_profile_tilt(im, bw_cutoff=0.1, Nscan=101):
     X, Y = np.meshgrid(x,y)
     # Get geometric center
     mask = np.zeros_like(im)
-    mask[im>=bw_cutoff*im.max()] = 1
+    mask[im>=bw_cutoff] = 1
     gx, gy, _, _ = get_moments(mask)
     # Define rotating variables
     R,T = cart2pol(X-gx,Y-gy)
@@ -473,3 +515,23 @@ def sg_fit(x, x0, fwhm, order, amplitude, offset=0):
         Amplitude offset of the Gaussian
     """
     return amplitude*np.exp(-np.log(2) * ((2 * (x - x0) / fwhm)**2)**order) + offset
+
+def sg2d_fit(x, fwx, fwy, x0, y0, offset, order, amplitude):
+    """
+    2D Super-Gaussian formula to used with curve_fit
+    """
+    X, Y = x[0], x[1]
+    return amplitude*gauss2D(X, Y, fwx, fwy, x0, y0, offset, order, int_FWHM=False)
+
+def curve_fit_ds(f, x, y, image, p0=None, bounds=(-np.inf, np.inf), Nds=100):
+    """
+    Image curve fitting, with downsampling to reduce computation time
+    """
+    ny, nx = image.shape
+    dsx = nx//Nds
+    dsy = ny//Nds
+    im_red = downscale_local_mean(image, (dsy, dsx))
+    x_red = downscale_local_mean(x, (dsy, dsx))
+    y_red = downscale_local_mean(y, (dsy, dsx))
+    return curve_fit(f, (x_red.flatten(), y_red.flatten()), im_red.flatten(), p0=p0, bounds=bounds)[0]
+    

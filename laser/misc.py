@@ -2,7 +2,8 @@ import numpy as np
 from scipy.interpolate import interp1d, interp2d
 from scipy.optimize import curve_fit
 import matplotlib.image as mpimg
-
+import h5py as h5
+from datetime import datetime
 
 def get_moments(image):
     """
@@ -289,8 +290,8 @@ def RGB_image_to_grayscale(image_path, reverse_scale=True, crop=None, downsample
     """
     Convert RGB colors to lightness grayscale
     
-    Parameters:
-    ===========
+    Parameters
+    ----------
     image_path: str
         location of the image to import and convert to greyscale
     
@@ -326,8 +327,8 @@ def norm_minmax(a):
     """
     Normalize the data by setting the minimum at 0 and the maximum at 1.
     
-    Parameters:
-    ===========
+    Parameters
+    ----------
     a: numpy.array
         Data to normalize
     """
@@ -337,8 +338,8 @@ def get_ellipse_moments(image, dx=1, dy=1, cut=None):
     """
     Compute the moments of the beam profile and give the ellipse parameters.
     
-    Parameters:
-    ===========
+    Parameters
+    ----------
     image: 2D numpy.array
         Intensity profile of the data
     
@@ -351,8 +352,8 @@ def get_ellipse_moments(image, dx=1, dy=1, cut=None):
     cut: None or float, optional
         Threshold below which the data is ignored
     
-    Outputs:
-    ========
+    Outputs
+    -------
     cx: float
         Horizontal position of the center of mass
     
@@ -419,8 +420,8 @@ def remove_baseline(image, threshold, quadratic=True):
     """
     Fit the baseline of a 2D image and removes it from this image.
     
-    Parameters:
-    ===========
+    Parameters
+    ----------
     image: 2D numpy.array
         Intensity profile of the data
         
@@ -476,3 +477,37 @@ def change_sigma_def(sigma_in, level_in, level_out, order_sg):
     Calculate the waist at 'level_out' of the max from the waist at 'level_in' for a (super-)Gaussian beam. For example change_sigma_def(10, 0.5, 0.1, 4) gives the full width at 10% for a 4th order super_Gaussian with a FWHM of 10.
     """
     return sigma_in * (np.log(level_out)/np.log(level_in))**(1/order_sg)
+
+def int_trapz_nu(x, y):
+    """
+    Trapezoid integration
+    """
+    return np.sum((y[:-1]+y[1:])*(x[1:]-x[:-1])/2)
+ 
+
+def scan_hdf5(path, max_depth=None, recursive=True, tab_step=2):
+    if max_depth is None:
+        max_depth = np.inf
+    idx = 0
+    def scan_node(g, tabs=0, max_depth=max_depth, idx=idx):
+        if g.name.split('/')[-1] == '':
+            print(' ' * tabs, str(idx)+'.', path.replace('\\','/').split('/')[-1])
+        else:
+            print(' ' * tabs, str(idx)+'.', g.name.split('/')[-1])
+        if max_depth>0:
+            for k, v in g.items():
+                if isinstance(v, h5.Dataset):
+                    print(' ' * tabs + ' ' * (tab_step+1) + str(idx+1)+'. ***', v.name.split('/')[-1])
+                elif isinstance(v, h5.Group) and recursive:
+                    scan_node(v, tabs=tabs + tab_step, max_depth=max_depth-1, idx=idx+1)
+    with h5.File(path, 'r') as f:
+        scan_node(f)
+
+def str2utc(datestring, format='%d/%m/%Y %H:%M:%S'):
+    return datetime.timestamp(datetime.strptime(datestring, format))
+
+def utc2str(timestamp, format='%d/%m/%Y %H:%M'):
+    return datetime.utcfromtimestamp(timestamp).strftime(format)
+
+def get_folder(filename):
+    return '/'.join(filename.replace('\\','/').split('/')[:-1])+'/'
