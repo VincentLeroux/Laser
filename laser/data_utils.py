@@ -2,12 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from laser.misc import polygauss, add_noise, biquad, norm_minmax, remove_baseline, get_ellipse_moments, get_fwhm, get_moments, cart2pol, dx, gauss2D
 from scipy.optimize import curve_fit
-from scipy.ndimage import gaussian_filter1d
+from scipy.ndimage import gaussian_filter1d, median_filter
 from scipy.interpolate import interp1d
 from laser.plot_utils import cmap_nicify
-from skimage.transform import downscale_local_mean
-from typing import Any
-
 
 def load_oceanoptics_spectra(filename):
     """
@@ -23,13 +20,13 @@ def load_oceanoptics_spectra(filename):
         data_raw = np.loadtxt(filename)
     except ValueError:
         data_raw = np.loadtxt(filename, dtype=str)
-        n = data_raw.shape[0]
+        N = data_raw.shape[0]
         data_raw = [np.float64(s.replace(',','.')) for s in data_raw.flatten()]
-        data_raw = np.reshape(data_raw, [n, len(data_raw)//n])
+        data_raw = np.reshape(data_raw, [N, len(data_raw)//N])
     return data_raw
 
 
-def random_beam_generator(n):
+def random_beam_generator(N):
     """
     Generate a beam profile with a random position, size,
     ellipticity, super-Gaussian order, with background noise
@@ -38,10 +35,10 @@ def random_beam_generator(n):
     
     Parameters
     ----------
-    n: int
-        Size of output nd.array (n x n)
+    N: int
+        Size of output nd.array (N x N)
     """
-    x = np.linspace(-1,1,n)
+    x = np.linspace(-1,1,N)
     X,Y = np.meshgrid(x,x)
     fwhmx = (np.random.rand()/0.3+0.1)/2
     fwhmy = (np.random.rand()/0.3+0.1)/2
@@ -52,7 +49,7 @@ def random_beam_generator(n):
     polygon=np.random.randint(1,10)
     angle=np.random.rand()*2*np.pi
     p = polygauss(X,Y,fwhmx,fwhmy,x0,y0,theta, order=order, polygon=polygon, angle=angle)
-    p = add_noise(p, density=n/(np.random.rand()*10+1), amplitude=np.random.rand()/2+0.5)
+    p = add_noise(p, density=N/(np.random.rand()*10+1), amplitude=np.random.rand()/2+0.5)
     
     c = np.random.rand()
     x1 = np.random.rand()-0.5
@@ -64,9 +61,9 @@ def random_beam_generator(n):
     b = np.random.rand()*norm_minmax(b)
     b += np.random.rand()**2*np.random.rand(*b.shape)
     return p+b
-
-
-def dualgauss(x, x1, x2, w1, w2, a1, a2):
+    
+    
+def dualgauss(x, x1, x2, w1, w2, a1, a2, c=0):
     """
     Sum of two Gaussian distributions. For curve fitting.
     
@@ -93,11 +90,13 @@ def dualgauss(x, x1, x2, w1, w2, a1, a2):
     a2: float
         Amplitude of 2nd Gaussian curve
     
+    c: float, optional
+        Offset, defaults to 0
     """
-    return a1*np.exp(-0.5*((x-x1)/w1)**2)+a2*np.exp(-0.5*((x-x2)/w2)**2)
+    return a1*np.exp(-0.5*((x-x1)/w1)**2)+a2*np.exp(-0.5*((x-x2)/w2)**2) + c
 
     
-def beam_analysis (image, x, y, baseline=None, plot=True, unit='mm', tilt_cutoff=None, beam_energy=None, unit_en = 'J', threshold_fluence=None, threshold_fluence2=None):
+def beam_analysis (image, x=None, y=None, baseline=None, plot=True, unit='mm', tilt_cutoff=None, beam_energy=None, unit_en = 'J', threshold_fluence=None, threshold_fluence2=None, quadratic=False, th_crop=0.2, scale_crop=1.5, threshold_hot_pixel=None):
     """
     Automatic analysis of laser beam intensity profile.
     
@@ -106,11 +105,11 @@ def beam_analysis (image, x, y, baseline=None, plot=True, unit='mm', tilt_cutoff
     image: 2D np.array
         Image to analyze
         
-    x: 1D np.array
-        Horizontal axis
+    x: None or 1D np.array, optional
+        Horizontal axis. If None, a np.arrange is used.
     
-    y: 1D np.array
-        Vertical axis
+    y: None or 1D np.array, optional
+        Vertical axis. If None, a np.arrange is used.
     
     baseline: None or float, optional
         if float, threshold for the removal of the background baseline.
@@ -136,6 +135,27 @@ def beam_analysis (image, x, y, baseline=None, plot=True, unit='mm', tilt_cutoff
         
     unit_en: str, optional
         Unit of the energy. Default is 'J'.
+    
+    threshold_fluence: None or float, optional
+        Lists the data above the fluence given by this parameter. If None (default), it is not computed.
+    
+    threshold_fluence2: None or float, optional
+        Lists the data above the fluence given by this parameter. If None (default), it is not computed.
+    
+    quadratic: bool, optional
+        If True, use a bi-quadratic fit for the background. If False (default), use a bi-linear fit.
+    
+    th_crop: float, optional
+        threshold to compute a rough beam size to restrict the analyzed area. Default is 0.2.
+    
+    scale_crop: float, optional
+        Restricted area around the beam is defined by scale_crop times the rough beam size. Adjust
+        this parameter to allow more or less of the background in the analysis. Defaults to 1.5.
+    
+    threshold_hot_pixel: None or float, optional
+        If a float is given (typically 3), a pixel value that is too large compared to its neighbors
+        will be replaced by the average of its neighbors. threshold_hot_pixel sets the sensitivity of this
+        detection. If None, no filtering is applied.
     
     Output
     ------
@@ -180,6 +200,15 @@ def beam_analysis (image, x, y, baseline=None, plot=True, unit='mm', tilt_cutoff
             
             * unit_en: str, unit of the energy value
     """
+    # Remove hot pixels
+    if threshold_hot_pixel is not None:
+        image = np.float64(image)
+        mask = np.ones((3,3))
+        mask[1,1]=0
+        imm = median_filter(image, footprint=mask, mode='nearest')
+        diff = image-imm
+        image[np.abs(diff)>np.std(diff)*threshold_hot_pixel] = imm[np.abs(diff)>np.std(diff)*threshold_hot_pixel]
+    
     # Normalize image
     imc = norm_minmax(image)
     # Remove baseline
@@ -187,18 +216,40 @@ def beam_analysis (image, x, y, baseline=None, plot=True, unit='mm', tilt_cutoff
         # Automatic baseline detection: fit of noise distribution,
         # baseline at mean + 2 sigma of noise distribution
         try:
-            yh, xh = np.histogram(imc.ravel(), bins=np.int(np.sqrt(imc.size)))
-            cf = curve_fit(dualgauss, xh[:-1], yh,
-                           p0=[np.mean(xh)/4, 3*np.mean(xh)/2,
-                               np.mean(xh)/6, np.mean(xh)/6,
-                               np.sum(image)/4, np.sum(image)/100],
-                           bounds=([0]*6, [1,1,1,1,np.inf, np.inf]))[0]
+            yh, xh = np.histogram(imc.ravel(), bins=int(np.sqrt(np.maximum(*imc.shape))))
+            xh = xh[:-1]
+            cf = curve_fit(dualgauss, xh, yh,
+                           p0=[xh[np.argmax(yh[xh<0.1])],
+                           xh[xh[xh<0.1].size + np.argmax(yh[xh>0.1])],
+                           get_fwhm(yh)*dx(xh)/2,np.mean(xh)/5,
+                           np.max(yh[xh<0.1]),np.max(yh[xh>0.1]), 0],
+                           bounds=([0]*7, [1,1,1,1,np.inf,np.inf,np.inf]))[0]
             idx = np.argmax(cf[-2:])
             baseline = cf[0+idx] + 2*np.abs(cf[2+idx])
         except RuntimeError:
             print('Automatic baseline not found, defaults to 20%')
             baseline=0.2
-    imc = remove_baseline(imc, baseline, quadratic=True)
+    imc = remove_baseline(imc, baseline, quadratic=quadratic)
+    
+    # Cut image around beam
+    mask = np.zeros_like(imc)
+    mask[imc>th_crop]=1
+    cx_rough, cy_rough, rx_rough, ry_rough,_,_ = get_ellipse_moments(mask)
+    r_rough = np.sqrt(rx_rough*ry_rough)
+    ym = int(np.maximum(cy_rough-scale_crop*r_rough, 0))
+    yp = int(np.minimum(cy_rough+scale_crop*r_rough, imc.shape[0]))
+    xm = int(np.maximum(cx_rough-scale_crop*r_rough, 0))
+    xp = int(np.minimum(cx_rough+scale_crop*r_rough, imc.shape[1]))
+    imc = imc[ym:yp, xm:xp]
+    
+    if x is None:
+        x = np.arange(imc.shape[1], dtype=float)
+    else:
+        x = x[xm:xp]
+    if y is None:
+        y = np.arange(imc.shape[0], dtype=float)
+    else:
+        y = y[ym:yp]
     
     # Compute beam moments and angle
     cx, cy, rx, ry, theta, gamma = get_ellipse_moments(imc, dx(x), dx(y), cut=0)
@@ -210,7 +261,7 @@ def beam_analysis (image, x, y, baseline=None, plot=True, unit='mm', tilt_cutoff
         energy_coeff = beam_energy/(np.sum(imc[imc>0])*dx(x)*dx(y))
         imc *= energy_coeff
         
-    # Compute Flat top beam variations
+    # Compute flat top beam variations
     top_mean, top_rms, top_ptp = get_flattop_rms(imc, x, y, cx, cy, rx, ry, theta, coeff=0.8)
     
     # Compute tilt of intensity distribution
@@ -236,10 +287,15 @@ def beam_analysis (image, x, y, baseline=None, plot=True, unit='mm', tilt_cutoff
             print('Vertical super-Gaussian fit failed....')
             sgfity = [0]*4
         sgfitim = [None, sgfitx, sgfity]
-        
+    
+    if sgfitim[0] is not None:
+        sg_im_tmp = sg2d_fit((X,Y), *sgfitim)
+        avg_tmp, rms_tmp, ptp_tmp = get_flattop_rms(imc-sg_im_tmp+1, x, y, cx, cy, rx, ry, theta, coeff=0.8)
+        top_rms = rms_tmp*avg_tmp/top_mean
+    
     # Build output dictionary
     output_dict = {'center_x':cx, 'center_y':cy, 'radius_x':rx, 'radius_y':ry,
-                    'theta_ell':theta, 'gamma_ell':gamma, 'im_filter':imc,
+                    'theta_ell':theta, 'gamma_ell':gamma, 'im_filter':imc,'x':x, 'y':y,
                     'baseline':baseline, 'flatness_axis':th_tilt, 'flatness_data':flatness,
                     'top_mean':top_mean, 'top_rms':top_rms, 'top_ptp':top_ptp,
                     'fit':sgfitim, 'energy':beam_energy, 'unit_en':unit_en}
@@ -333,6 +389,18 @@ def beam_analysis_plot(data, x, y, unit='mm', list_peak=[], th_peak=None, list_p
     
     unit: str, optional
         unit of spatial axes. Default to 'mm'
+    
+    list_peak: list, optional
+        list of pixels above a threshold value. The pixels will be highlighted in orange.
+    
+    th_peak: float or None, optional
+        Value of the threshold used for list_peak.
+        
+    list_peak2: list, optional
+        list of pixels above a threshold value. The pixels will be highlighted in red.
+    
+    th_peak2: float or None, optional
+        Value of the threshold used for list_peak2.
     """
     # Normalize image
     im = data['im_filter']#/data['top_mean']
@@ -399,7 +467,7 @@ def beam_analysis_plot(data, x, y, unit='mm', list_peak=[], th_peak=None, list_p
         plt.plot(y, sg_fit(y, data['fit'][3]-data['center_y'], data['fit'][1], data['fit'][5], data['fit'][6]), 
                  c='steelblue', label='FWHM = {:.2f} '.format(data['fit'][1])+unit+', order = {:.1f}'.format(data['fit'][5]))
     plt.xlim(-limplot, limplot)
-    plt.ylim(None,None)
+    plt.ylim(None,plt.ylim()[1]+np.ptp(plt.ylim())/5)
     plt.legend(loc='upper center', ncol=2)
     plt.xlabel('Axis ['+unit+']')
     plt.ylabel('Fluence ['+title_unit+']')
@@ -459,8 +527,8 @@ def beam_profile_tilt(im, bw_cutoff=0.1, Nscan=101):
     """
     Measures the asymmetry/tilt of a flat-top profile
     
-    Parameters
-    ----------
+    Parameters:
+    ===========
     im: numpy.array
         Beam profile to analyze
         
@@ -514,15 +582,45 @@ def sg_fit(x, x0, fwhm, order, amplitude, offset=0):
     offset: float, optional
         Amplitude offset of the Gaussian
     """
-    return amplitude*np.exp(-np.log(2) * ((2 * (x - x0) / fwhm)**2)**order) + offset
+    return amplitude*np.exp(-np.log(2) * ((2 * (x - x0) / fwhm)**2)**(order/2)) + offset
 
 def sg2d_fit(x, fwx, fwy, x0, y0, offset, order, amplitude):
     """
     2D Super-Gaussian formula to used with curve_fit
     """
     X, Y = x[0], x[1]
-    return amplitude*gauss2D(X, Y, fwx, fwy, x0, y0, offset, order, int_FWHM=False)
+    return amplitude*gauss2D(X, Y, fwx, fwy, x0, y0, offset, order/2, int_FWHM=False)
 
+def downscale_mean(arr, red):
+    """
+    Downscale an image by the local mean
+    
+    Parameters
+    ----------
+    arr: 2D numpy.array
+        Array to reduce
+        
+    red: int, or couple
+        Factor by how much the array is reduced.
+        If couple, the first factor reduces in x, and the second in y.
+    
+    Output
+    ------
+    arr_out: 2D numpy.array
+        Reduced array
+    
+    """
+    if isinstance(red, (int, float)):
+        redx, redy = red, red
+    else:
+        redx, redy = red[0], red[1]
+    ny, nx = arr.shape
+    arr_out = np.zeros([ny//redy, nx//redx])
+    iy, ix = np.unravel_index(np.arange(redx*redy), (redy,redx))
+    for k in range(redx*redy):
+        arr_out += arr[iy[k]:ny//redy*redy:redy, ix[k]:nx//redx*redx:redx]
+    return arr_out/(redx*redy)
+    
 def curve_fit_ds(f, x, y, image, p0=None, bounds=(-np.inf, np.inf), Nds=100):
     """
     Image curve fitting, with downsampling to reduce computation time
@@ -530,8 +628,8 @@ def curve_fit_ds(f, x, y, image, p0=None, bounds=(-np.inf, np.inf), Nds=100):
     ny, nx = image.shape
     dsx = nx//Nds
     dsy = ny//Nds
-    im_red = downscale_local_mean(image, (dsy, dsx))
-    x_red = downscale_local_mean(x, (dsy, dsx))
-    y_red = downscale_local_mean(y, (dsy, dsx))
+    im_red = downscale_mean(image, (dsy, dsx))
+    x_red = downscale_mean(x, (dsy, dsx))
+    y_red = downscale_mean(y, (dsy, dsx))
     return curve_fit(f, (x_red.flatten(), y_red.flatten()), im_red.flatten(), p0=p0, bounds=bounds)[0]
     

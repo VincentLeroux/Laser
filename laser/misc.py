@@ -476,7 +476,7 @@ def change_sigma_def(sigma_in, level_in, level_out, order_sg):
     """
     Calculate the waist at 'level_out' of the max from the waist at 'level_in' for a (super-)Gaussian beam. For example change_sigma_def(10, 0.5, 0.1, 4) gives the full width at 10% for a 4th order super_Gaussian with a FWHM of 10.
     """
-    return sigma_in * (np.log(level_out)/np.log(level_in))**(1/order_sg)
+    return sigma_in * (np.log(level_out)/np.log(level_in))**(1/(2*order_sg))
 
 def int_trapz_nu(x, y):
     """
